@@ -1,0 +1,27 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProBank.UnitTests", "ProBank.UnitTests\ProBank.UnitTests.csproj", "{4AABC4BF-C79F-5353-8CD0-1FA4A7B18EE2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProBank.IntegrationTests", "ProBank.IntegrationTests\ProBank.IntegrationTests.csproj", "{68E590F6-04B9-51F1-A75F-DAD9640068FC}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4AABC4BF-C79F-5353-8CD0-1FA4A7B18EE2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4AABC4BF-C79F-5353-8CD0-1FA4A7B18EE2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4AABC4BF-C79F-5353-8CD0-1FA4A7B18EE2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4AABC4BF-C79F-5353-8CD0-1FA4A7B18EE2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{68E590F6-04B9-51F1-A75F-DAD9640068FC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{68E590F6-04B9-51F1-A75F-DAD9640068FC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{68E590F6-04B9-51F1-A75F-DAD9640068FC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{68E590F6-04B9-51F1-A75F-DAD9640068FC}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+	EndGlobalSection
+EndGlobal

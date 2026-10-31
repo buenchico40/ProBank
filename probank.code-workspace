@@ -1,0 +1,12 @@
+{
+  "folders": [
+    { "name": "ProBank", "path": "." },
+    { "name": "spec", "path": "spec" },
+    { "name": "src", "path": "src" },
+    { "name": "infra", "path": "infra" },
+    { "name": "test", "path": "test" }
+  ],
+  "settings": {
+    "dotnet.defaultSolution": "src/ProBank.sln"
+  }
+}

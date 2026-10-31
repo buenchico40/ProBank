@@ -1,0 +1,62 @@
+erDiagram
+  Normativa ||--o{ Control : exige
+  Control ||--o{ EvaluacionControl : evalua
+  AuditoriaRegulatoria ||--o{ Hallazgo : genera
+  Control ||--o{ Hallazgo : relacionado
+  Hallazgo ||--o{ AvanceHallazgo : "plan de acción"
+  Normativa {
+    int NormativaId PK
+    nvarchar Nombre
+    nvarchar Ente "organismo de control"
+  }
+  Control {
+    int ControlId PK
+    uniqueidentifier Token
+    int NormativaId FK
+    nvarchar Codigo
+    nvarchar Nombre
+    varchar Frecuencia
+    int ResponsableId FK "seg.Usuario"
+    date ProximaEvaluacion
+    int DiasAviso
+    varchar Estado "al día, por evaluar, vencido"
+  }
+  EvaluacionControl {
+    int EvaluacionId PK
+    int ControlId FK
+    date Fecha
+    varchar Resultado "efectivo, parcial, inefectivo"
+    nvarchar Observacion
+    int EvaluadorId FK "seg.Usuario"
+  }
+  AuditoriaRegulatoria {
+    int AuditoriaId PK
+    uniqueidentifier Token
+    varchar Tipo "interna, externa, regulador"
+    nvarchar Ente
+    nvarchar Alcance
+    date FechaInicio
+    date FechaFin
+    varchar Estado
+  }
+  Hallazgo {
+    int HallazgoId PK
+    uniqueidentifier Token
+    int AuditoriaId FK
+    int ControlId FK "opcional"
+    nvarchar Codigo
+    nvarchar Descripcion
+    varchar Riesgo "alto, medio, bajo"
+    int ResponsableId FK "seg.Usuario"
+    date FechaCompromiso
+    decimal Avance
+    varchar Estado "abierto, en proceso, vencido, cerrado"
+  }
+  AvanceHallazgo {
+    int AvanceId PK
+    int HallazgoId FK
+    date Fecha
+    decimal Porcentaje
+    nvarchar Comentario
+    int UsuarioId FK "seg.Usuario"
+  }

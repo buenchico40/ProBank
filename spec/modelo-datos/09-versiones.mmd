@@ -1,0 +1,47 @@
+erDiagram
+  Aplicacion ||--o{ Componente : tiene
+  Componente ||--o{ Version : publica
+  Version ||--o{ VersionItem : incluye
+  Version ||--o{ Despliegue : "se despliega"
+  Version ||--o{ VersionAprobador : "aprueban paso a Producción"
+  Componente ||--o{ Dependencia : depende
+  Aplicacion {
+    int AplicacionId PK
+    nvarchar Nombre
+    int ResponsableId FK
+  }
+  Componente {
+    int ComponenteId PK
+    int AplicacionId FK
+    nvarchar Nombre
+    varchar Tipo "Web, API, Servicio, BaseDatos, Libreria, Reporte"
+    nvarchar Repositorio
+  }
+  Version {
+    int VersionId PK
+    int ComponenteId FK
+    int Mayor
+    int Menor
+    int Parche
+    date FechaLiberacion
+    nvarchar NotasHtml
+    varchar Estado "Planificada, EnPruebas, Aprobada, Desplegada, Revertida"
+  }
+  VersionItem {
+    int VersionId PK,FK
+    int ItemId PK,FK "pry.Item"
+  }
+  Despliegue {
+    int DespliegueId PK
+    int VersionId FK
+    varchar Ambiente "Desarrollo, Pruebas, Produccion"
+    datetime2 Fecha
+    int ResponsableId FK
+    varchar Resultado
+    nvarchar MotivoReversion
+  }
+  Dependencia {
+    int ComponenteId PK,FK
+    int DependeDeId PK,FK
+    varchar VersionMinima
+  }

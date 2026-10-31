@@ -1,0 +1,16 @@
+@{ ViewData["Title"] = "Opción en construcción"; }
+@section Scripts {
+<script>
+  pb.listo.then(() => {
+    const clave = pb.sesion.modulo;
+    const g = pb.menu.find(m => m.items.some(i => i[0] === clave)), it = g && g.items.find(i => i[0] === clave);
+    const $c = $("#content");
+    if (!it) { pb.ui.head($c, "ProBank", "Opción"); $c.append("<h1>Opción no encontrada</h1>"); return; }
+    document.title = it[1] + " · ProBank";
+    pb.ui.head($c, g.title, it[1]);
+    $c.append($("<h1>").text(it[1]));
+    $('<div class="card pad">').appendTo($c).append($('<p class="muted" style="margin:0">')
+      .text("Esta opción aún no está construida. Sus reglas están en spec/modulos/ y su pantalla de referencia en prototype/ProBank_DevExtreme.html."));
+  });
+</script>
+}

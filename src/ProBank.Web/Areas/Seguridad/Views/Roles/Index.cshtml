@@ -1,0 +1,146 @@
+@{ ViewData["Title"] = "Roles y permisos"; ViewData["Opcion"] = "roles"; }
+@section Scripts {
+<script>
+  // SEG-03: permisos por opción del menú × acción y funciones propias de cada opción (matriz dxTreeList del prototipo).
+  pb.listo.then(() => {
+    const $c = $("#content"), url = (a, q) => "/Seguridad/Roles/" + a + (q ? "?" + q : "");
+    const ACCIONES = [["ver", "Ver"], ["crear", "Crear"], ["editar", "Editar"], ["eliminar", "Eliminar / Anular"], ["exportar", "Exportar"], ["aprobar", "Aprobar"]];
+    let lista = null;
+
+    // Permisos del rol como { opcion: { accion: bool } } y la estructura módulo / opción / función
+    function modelo(filas) {
+      const P = {}, mods = [], opciones = {};
+      filas.forEach(f => {
+        P[f.opcion] = P[f.opcion] || {}; P[f.opcion][f.accion] = f.concedido;
+        let m = mods.find(x => x.t === f.modulo); if (!m) mods.push(m = { t: f.modulo, items: [] });
+        let o = opciones[f.opcion]; if (!o) { o = opciones[f.opcion] = { k: f.opcion, n: f.opcionNombre, fns: [] }; m.items.push(o); }
+        if (f.tipo === "Funcion") o.fns.push([f.accion, f.accionNombre]);
+      });
+      return { P, mods };
+    }
+
+    function listado() {
+      $c.empty();
+      lista = pb.ui.grid({
+        $c, modulo: "Seguridad", titulo: "Roles y permisos", opcion: "roles", clave: "rolId",
+        cargar: () => pb.get(url("Datos")),
+        columnas: [
+          { campo: "nombre", titulo: "Rol" }, { campo: "descripcion", titulo: "Descripción" },
+          { campo: "opciones", titulo: "Opciones del menú", valor: r => r.opciones + " de " + r.totalOpciones },
+          { campo: "usuarios", titulo: "Usuarios activos" },
+          { campo: "estado", titulo: "Estado", pill: true }
+        ],
+        botones: [
+          { text: "Nuevo", icon: "add", type: "default", accion: "crear", onClick: () => ficha(null, "nuevo") },
+          { text: "Editar", icon: "edit", accion: "editar", fila: true, onClick: r => ficha(r, "edicion") }
+        ],
+        alAbrir: r => ficha(r, "consulta"),
+        detalle: ($e, r) => {
+          pb.ui.mdHead($e, [r.nombre, r.descripcion || "", r.opciones + " de " + r.totalOpciones + " opciones"], r.estado);
+          const $s = $("<div>").appendTo($e);
+          pb.get(url("Permisos", "id=" + r.rolId)).then(filas => {
+            if (!filas) return;
+            const { P, mods } = modelo(filas);
+            pb.ui.mdGrid($s, "Acceso por módulo", [["m", "Módulo"], ["op", "Opciones con acceso"], ["ac", "Acciones permitidas"], ["acc", "Acceso"]], mods.map(g => {
+              const ok = g.items.filter(i => P[i.k].ver);
+              const acts = ACCIONES.filter(a => g.items.some(i => P[i.k][a[0]])).map(a => a[1]);
+              const fns = g.items.reduce((n, i) => n + i.fns.filter(f => P[i.k][f[0]]).length, 0), tot = g.items.reduce((n, i) => n + i.fns.length, 0);
+              if (tot) acts.push("Funciones " + fns + " de " + tot);
+              return { m: g.t, op: ok.length ? ok.map(i => i.n).join(", ") : "—", ac: acts.length ? acts.join(", ") : "—", acc: ok.length === 0 ? "No" : ok.length === g.items.length ? "Total" : "Parcial" };
+            }));
+          });
+          if (pb.can("roles", "editar")) pb.ui.mdActions($e, [{ text: "Editar permisos", icon: "edit", type: "default", onClick: () => ficha(r, "edicion") }]);
+        }
+      });
+    }
+
+    async function ficha(r, modo) {
+      const filas = await pb.get(url("Permisos", "id=" + (r ? r.rolId : 0)));
+      if (!filas) return;
+      const esAdmin = r && r.nombre === "Administrador";
+      const { P, mods } = modelo(filas);
+      const datos = r ? { nombre: r.nombre, descripcion: r.descripcion, opciones: r.opciones + " de " + r.totalOpciones, estado: r.estado }
+                      : { nombre: "", descripcion: "", opciones: "—", estado: "Activo" };
+      pb.ui.detalle({
+        $c, modulo: "Seguridad", titulo: "Roles y permisos", modo, nombre: r && r.nombre, datos,
+        soloLectura: modo === "consulta" && !pb.can("roles", "editar"),
+        items: ro => [
+          { dataField: "nombre", label: { text: "Rol" }, isRequired: !ro, editorOptions: { maxLength: 60, readOnly: ro || esAdmin } },
+          { dataField: "descripcion", label: { text: "Descripción" }, editorOptions: { maxLength: 300 } },
+          { dataField: "opciones", label: { text: "Opciones del menú (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "estado", label: { text: "Estado" }, editorType: "dxSelectBox", editorOptions: { items: ["Activo", "Inactivo"], readOnly: ro || esAdmin } }
+        ],
+        extra: ($x, ro) => matriz($x, P, mods, ro || esAdmin, esAdmin),
+        alGuardar: async d => {
+          const id = await pb.post(url("Guardar", r ? "id=" + r.rolId : ""), { nombre: d.nombre, descripcion: d.descripcion || null, estado: d.estado });
+          if (id === undefined) return;
+          if (!esAdmin) {
+            const permisos = [];
+            Object.keys(P).forEach(k => Object.keys(P[k]).forEach(a => { if (P[k][a]) permisos.push(k + ":" + a); }));
+            if (await pb.post(url("GuardarPermisos", "id=" + id), { permisos }) === undefined) return;
+          }
+          listado(); pb.notify("Registro " + d.nombre + " guardado correctamente");
+        },
+        alEditar: () => ficha(r, "edicion"),
+        alVolver: listado
+      });
+    }
+
+    // Igual a renderRolePerms del prototipo: marcar el módulo aplica a sus opciones; quitar «Ver» quita el resto.
+    function matriz($x, P2, mods, ro, esAdmin) {
+      const $c2 = $('<div class="card pad stack">').appendTo($x);
+      $c2.append("<h2>Permisos del rol</h2>");
+      $c2.append($('<p class="muted">').text(esAdmin ? "El rol Administrador tiene siempre todos los permisos; no se editan."
+        : ro ? "Pulse Editar para cambiar los permisos."
+        : "Marque las opciones y acciones que tendrá el rol; despliegue cada opción para asignar sus funciones específicas (por ejemplo Revocar sesiones o Mostrar contraseña). Marcar el módulo aplica a todas sus opciones; quitar «Ver» quita el resto de acciones de esa opción. Los cambios se aplican al Guardar."));
+      const ds = [];
+      mods.forEach((g, gi) => {
+        ds.push({ id: "m" + gi, parentId: 0, nombre: g.t, mod: true, keys: g.items.map(i => i.k) });
+        g.items.forEach(i => { ds.push({ id: i.k, parentId: "m" + gi, nombre: i.n, mod: false, keys: [i.k] });
+          i.fns.forEach(f => ds.push({ id: i.k + "." + f[0], parentId: i.k, nombre: f[1], fn: f[0], opt: i.k, mod: false, keys: [i.k] })); });
+      });
+      const fnsDe = k => (mods.flatMap(g => g.items).find(i => i.k === k) || { fns: [] }).fns;
+      const state = (keys, a) => { const v = keys.map(k => !!(P2[k] || {})[a]); return v.every(x => x) ? true : v.some(x => x) ? undefined : false; };
+      let tl;
+      const $tb = $('<div class="actions">').appendTo($c2);
+      const setAll = v => { Object.keys(P2).forEach(k => Object.keys(P2[k]).forEach(a => { P2[k][a] = v; })); tl.refresh(); summary(); };
+      if (!ro) {
+        pb.ui.button($("<div>").appendTo($tb), { text: "Marcar todo", icon: "selectall", onClick: () => setAll(true) });
+        pb.ui.button($("<div>").appendTo($tb), { text: "Quitar todo", icon: "unselectall", onClick: () => setAll(false) });
+        pb.ui.button($("<div>").appendTo($tb), { text: "Solo lectura en todo", icon: "find", onClick: () => { Object.keys(P2).forEach(k => Object.keys(P2[k]).forEach(a => { P2[k][a] = a === "ver" || a === "exportar"; })); tl.refresh(); summary(); } });
+      }
+      const $sum = $('<span class="muted">').appendTo($tb);
+      const summary = () => { const op = ds.filter(d => !d.mod && !d.fn), fn = ds.filter(d => d.fn); $sum.text(op.filter(d => P2[d.id].ver).length + " de " + op.length + " opciones visibles en el menú · " + fn.filter(d => P2[d.opt][d.fn]).length + " de " + fn.length + " funciones específicas"); };
+      tl = $("<div>").appendTo($c2).dxTreeList({
+        dataSource: ds, keyExpr: "id", parentIdExpr: "parentId", rootValue: 0, showBorders: true, showRowLines: true, columnAutoWidth: false, wordWrapEnabled: true,
+        scrolling: { mode: "standard" }, paging: { enabled: false }, sorting: { mode: "none" },
+        autoExpandAll: false, expandedRowKeys: ds.filter(d => d.mod).map(d => d.id),
+        onRowPrepared: e => { if (e.rowType === "data" && e.data.mod) e.rowElement.addClass("permmod"); if (e.rowType === "data" && e.data.fn) e.rowElement.addClass("permfn"); },
+        columns: [{ dataField: "nombre", caption: "Módulo / opción / función", minWidth: 220 }].concat(ACCIONES.map(a => ({
+          caption: a[0] === "ver" ? "Ver / Permitir" : a[1], alignment: "center", width: pb.isPhone() ? 64 : 110,
+          cellTemplate: ($el, info) => {
+            const d = info.data;
+            if (d.fn) {
+              // función específica: un solo permiso, en la columna «Ver / Permitir»
+              if (a[0] !== "ver") return;
+              $("<div>").appendTo($el).dxCheckBox({ value: !!P2[d.opt][d.fn], readOnly: ro, elementAttr: { "aria-label": "Permitir " + d.nombre },
+                onValueChanged: e => { if (!e.event) return; P2[d.opt][d.fn] = !!e.value; if (e.value) P2[d.opt].ver = true; setTimeout(() => { tl.refresh(); summary(); }, 0); } });
+              return;
+            }
+            $("<div>").appendTo($el).dxCheckBox({ value: state(d.keys, a[0]), readOnly: ro, enableThreeStateBehavior: false, elementAttr: { "aria-label": a[1] + " · " + d.nombre },
+              onValueChanged: e => {
+                if (e.value === undefined || !e.event) return;
+                const v = !!e.value;
+                d.keys.forEach(k => { P2[k][a[0]] = v; if (a[0] === "ver" && !v) Object.keys(P2[k]).forEach(x => { P2[k][x] = false; }); if (a[0] !== "ver" && v) P2[k].ver = true; if (d.mod && a[0] === "ver" && v) fnsDe(k).forEach(f => { P2[k][f[0]] = true; }); });
+                setTimeout(() => { tl.refresh(); summary(); }, 0);
+              } });
+          }
+        })))
+      }).dxTreeList("instance");
+      summary();
+    }
+
+    listado();
+  });
+</script>
+}

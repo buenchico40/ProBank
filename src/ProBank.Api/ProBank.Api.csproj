@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <UserSecretsId>probank-api</UserSecretsId>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../ProBank.Application/ProBank.Application.csproj" />
+    <ProjectReference Include="../ProBank.Infrastructure/ProBank.Infrastructure.csproj" />
+    <ProjectReference Include="../ProBank.Contracts/ProBank.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="ProBank.IntegrationTests" />
+  </ItemGroup>
+</Project>

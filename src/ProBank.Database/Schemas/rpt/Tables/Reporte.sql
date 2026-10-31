@@ -1,0 +1,8 @@
+CREATE TABLE [rpt].[Reporte]
+(
+ReporteId INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_Reporte PRIMARY KEY,
+    Codigo    VARCHAR(20) NOT NULL CONSTRAINT UQ_Reporte UNIQUE,
+    Nombre    NVARCHAR(150) NOT NULL,
+    Ruta      NVARCHAR(400) NOT NULL,
+    Estado    VARCHAR(20) NOT NULL
+);

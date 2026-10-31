@@ -1,0 +1,14 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    { "label": "build", "type": "process", "command": "dotnet", "args": ["build", "src/ProBank.sln"], "group": { "kind": "build", "isDefault": true }, "problemMatcher": "$msCompile" },
+    { "label": "build-setup", "type": "process", "command": "dotnet", "args": ["build", "tools/ProBank.Setup/ProBank.Setup.csproj"], "problemMatcher": "$msCompile" },
+    { "label": "test: unit", "type": "process", "command": "dotnet", "args": ["test", "test/ProBank.Tests.sln", "--filter", "Category!=Integration"], "group": "test", "problemMatcher": "$msCompile" },
+    { "label": "test: integration", "type": "process", "command": "dotnet", "args": ["test", "test/ProBank.Tests.sln", "--filter", "Category=Integration"], "group": "test" },
+    { "label": "test: e2e (Playwright)", "type": "shell", "command": "npx playwright test", "options": { "cwd": "${workspaceFolder}/test/e2e" }, "group": "test" },
+    { "label": "test: e2e prototipo", "type": "shell", "command": "npx playwright test --project=prototipo", "options": { "cwd": "${workspaceFolder}/test/e2e" }, "group": "test" },
+    { "label": "db: build dacpac", "type": "process", "command": "dotnet", "args": ["build", "src/ProBank.Database/ProBank.Database.sqlproj"] },
+    { "label": "tf: fmt", "type": "shell", "command": "terraform fmt -recursive", "options": { "cwd": "${workspaceFolder}/infra" } },
+    { "label": "tf: plan dev", "type": "shell", "command": "terraform init && terraform plan -out=dev.tfplan", "options": { "cwd": "${workspaceFolder}/infra/envs/dev" } }
+  ]
+}

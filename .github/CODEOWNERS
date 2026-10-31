@@ -1,0 +1,5 @@
+# Gerencia de TI revisa todo; cada área revisa lo suyo
+*                    @probank/gerencia-ti
+/infra/              @probank/infraestructura
+/src/ProBank.Database/ @probank/dba
+/spec/               @probank/gerencia-ti

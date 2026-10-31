@@ -1,0 +1,57 @@
+name: infra
+on:
+  pull_request:
+    paths: ["infra/**"]
+  workflow_dispatch:
+    inputs:
+      ambiente:
+        type: choice
+        options: [dev, qa, prod]
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.ambiente || 'dev' }}
+    defaults:
+      run:
+        working-directory: infra/envs/${{ inputs.ambiente || 'dev' }}
+    env:
+      ARM_USE_OIDC: true
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform fmt -check -recursive ../..
+      - run: terraform init
+      - run: terraform validate
+      - run: terraform plan -out=tfplan
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ inputs.ambiente || 'dev' }}
+          path: infra/envs/${{ inputs.ambiente || 'dev' }}/tfplan
+  apply:
+    if: github.event_name == 'workflow_dispatch'
+    needs: plan
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.ambiente }}-apply   # requiere aprobación en el ambiente
+    defaults:
+      run:
+        working-directory: infra/envs/${{ inputs.ambiente }}
+    env:
+      ARM_USE_OIDC: true
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfplan-${{ inputs.ambiente }}
+          path: infra/envs/${{ inputs.ambiente }}
+      - run: terraform init
+      - run: terraform apply tfplan

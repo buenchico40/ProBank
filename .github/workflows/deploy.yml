@@ -1,0 +1,40 @@
+name: deploy
+on:
+  workflow_dispatch:
+    inputs:
+      ambiente:
+        type: choice
+        options: [dev, qa, prod]
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.ambiente }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet publish src/ProBank.Api -c Release -o out/api
+      - run: dotnet publish src/ProBank.Web -c Release -o out/web
+      - run: dotnet build src/ProBank.Database/ProBank.Database.sqlproj -c Release
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - uses: azure/sql-action@v2.3
+        with:
+          connection-string: ${{ secrets.SQL_DEPLOY_CONNECTION }}
+          path: src/ProBank.Database/bin/Release/ProBank.Database.dacpac
+          action: publish
+      - uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.API_APP_NAME }}
+          package: out/api
+      - uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.WEB_APP_NAME }}
+          package: out/web

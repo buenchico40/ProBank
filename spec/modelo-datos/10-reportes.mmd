@@ -1,0 +1,26 @@
+erDiagram
+  Reporte ||--o{ ReporteParametro : publica
+  Reporte ||--o{ ReporteRol : "visible para"
+  Reporte {
+    int ReporteId PK
+    varchar Codigo
+    nvarchar Nombre
+    int ModuloId FK "seg.Modulo"
+    varchar Servidor "DevExpress o SSRS"
+    nvarchar Ruta "ruta en el servidor de reportes"
+    varchar Estado "habilitado, retirado"
+    datetime2 UltimaSincronizacion
+  }
+  ReporteParametro {
+    int ParametroId PK
+    int ReporteId FK
+    varchar Nombre "@FechaDesde"
+    nvarchar Etiqueta
+    varchar Tipo
+    bit Obligatorio
+    nvarchar ValorDefecto
+  }
+  ReporteRol {
+    int ReporteId PK,FK
+    int RolId PK,FK "seg.Rol"
+  }

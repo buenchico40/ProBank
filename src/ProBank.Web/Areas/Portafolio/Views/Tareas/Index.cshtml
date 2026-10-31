@@ -1,0 +1,96 @@
+@{ ViewData["Title"] = "Mis tareas"; ViewData["Opcion"] = "tareas"; }
+@section Scripts {
+<script src="~/js/portafolio.js" asp-append-version="true"></script>
+<script>
+  // PRY-03, PRY-04 y PRY-05: tareas del técnico (o todas, para quien edita tareas), envío a aprobar y cierre.
+  pb.listo.then(() => {
+    const $c = $("#content");
+    const S = { todas: false };
+    let lista = null;
+    const puedeVerTodas = pb.can("tareas", "editar");
+
+    function listado() {
+      $c.empty();
+      lista = pb.ui.grid({
+        $c, modulo: "Portafolio", titulo: "Mis tareas", opcion: "tareas", clave: "token",
+        cargar: () => pb.get(pry.url("Tareas", "todas=" + S.todas)),
+        filtros: puedeVerTodas ? [{ location: "before", widget: "dxButtonGroup", options: { items: [{ id: false, text: "Mis tareas" }, { id: true, text: "Todas" }], keyExpr: "id",
+          selectedItemKeys: [S.todas], stylingMode: "outlined", onItemClick: e => { S.todas = e.itemData.id; lista.recargar(); } } }] : [],
+        columnas: [
+          { campo: "codigo", titulo: "Tarea", valor: t => t.codigo + " · " + t.titulo }, { campo: "item", titulo: "Ítem" }, { campo: "hito", titulo: "Hito" },
+          { campo: "area", titulo: "Área" }, { campo: "tecnico", titulo: "Técnico" },
+          { campo: "fechaTerminacion", titulo: "Fecha de terminación", formato: "fecha" },
+          { campo: "aprobadores", titulo: "Aprobadores", valor: t => t.aprobadores.join(", ") || "Ninguno" },
+          { campo: "avance", titulo: "Avance", valor: t => t.avance + " %" },
+          { campo: "estado", titulo: "Estado", pill: true, valor: t => pry.ESTADO[t.estado] }
+        ],
+        botones: [
+          { text: "Nuevo", icon: "add", type: "default", accion: "crear", onClick: () => pry.tareaPopup(null, () => lista.recargar()) },
+          { text: "Editar", icon: "edit", accion: "editar", fila: true, onClick: t => ficha(t, "edicion") },
+          { text: "Enviar a aprobar", icon: "send", fila: true, onClick: t => propia(t) && validar(t, "enviar") && pry.accion(t, "enviar", () => lista.recargar()) },
+          { text: "Marcar completada", icon: "check", fila: true, onClick: t => propia(t) && validar(t, "completar") && pry.accion(t, "completar", () => lista.recargar()) }
+        ],
+        alAbrir: t => ficha(t, "consulta"),
+        detalle: ($e, t) => pry.detalleTarea($e, t, () => lista.recargar())
+      });
+    }
+    const propia = t => (t.tecnicoId === pb.perfil.usuarioId || pb.can("tareas", "editar")) || (pb.notify("Solo el técnico asignado puede hacerlo", "warning"), false);
+    const validar = (t, a) => {
+      if (a === "enviar" && (t.estado === "EnRevision" || t.estado === "Completada")) { pb.notify("La tarea " + t.codigo + " ya fue enviada o está completada", "warning"); return false; }
+      if (a === "completar" && t.estado !== "EnCurso") { pb.notify("Solo se completa una tarea en curso (aprobada o sin aprobadores)", "warning"); return false; }
+      return true;
+    };
+
+    async function ficha(t, modo) {
+      const [d, users, item] = await Promise.all([pb.get(pry.url("Tarea", "token=" + t.token)), pry.usuarios(), pb.get(pry.url("Item", "token=" + t.itemToken))]);
+      if (!d) return;
+      if (modo === "edicion" && t.estado === "Completada") return pb.notify("La tarea está completada", "warning");
+      const hitos = [{ hitoId: null, nombre: "(Sin hito)" }].concat(item ? item.hitos : []);
+      const datos = { codigo: t.codigo, item: t.item, titulo: t.titulo, hitoId: t.hitoId, orden: t.orden, area: t.area, tecnicoId: t.tecnicoId,
+        inicio: pb.aFecha(t.fechaInicio), fecha: pb.aFecha(t.fechaTerminacion), avance: t.avance, aprob: t.aprobadorIds.slice(), estado: pry.ESTADO[t.estado], circuito: t.avanceAprobacion };
+      let editor = null;
+      pb.ui.detalle({
+        $c, modulo: "Portafolio", titulo: "Mis tareas", modo, nombre: t.codigo, token: t.token, datos,
+        soloLectura: modo === "consulta" && (!pb.can("tareas", "editar") || t.estado === "Completada"),
+        items: ro => [
+          { dataField: "codigo", label: { text: "Tarea" }, editorOptions: { readOnly: true } },
+          { dataField: "item", label: { text: "Proyecto, mejora o bug" }, editorOptions: { readOnly: true } },
+          { dataField: "titulo", label: { text: "Título" }, isRequired: !ro, editorOptions: { maxLength: 200 } },
+          { dataField: "hitoId", label: { text: "Hito" }, editorType: "dxSelectBox", editorOptions: { dataSource: hitos, valueExpr: "hitoId", displayExpr: "nombre" } },
+          { dataField: "orden", label: { text: "Orden" }, editorType: "dxNumberBox", isRequired: !ro, editorOptions: { min: 1, showSpinButtons: true } },
+          { dataField: "area", label: { text: "Área" }, editorType: "dxSelectBox", isRequired: !ro, editorOptions: { items: pry.AREAS } },
+          { dataField: "tecnicoId", label: { text: "Técnico asignado" }, editorType: "dxSelectBox", isRequired: !ro, editorOptions: { dataSource: users, valueExpr: "usuarioId", displayExpr: "nombre", searchEnabled: true } },
+          { dataField: "inicio", label: { text: "Fecha de inicio" }, editorType: "dxDateBox", isRequired: !ro, editorOptions: { displayFormat: "dd/MM/yyyy" } },
+          { dataField: "fecha", label: { text: "Fecha de terminación" }, editorType: "dxDateBox", isRequired: !ro, editorOptions: { displayFormat: "dd/MM/yyyy" },
+            validationRules: [{ type: "custom", message: "No puede ser anterior al inicio", validationCallback: o => !o.value || o.value >= datos.inicio }] },
+          { dataField: "avance", label: { text: "Avance (%)" }, editorType: "dxNumberBox", editorOptions: { min: 0, max: 100, showSpinButtons: true, format: "#0 '%'" } },
+          { dataField: "aprob", label: { text: "Aprobadores (ninguno, uno o varios; si son varios, aprueban todos)" }, editorType: "dxTagBox",
+            editorOptions: { dataSource: users, valueExpr: "usuarioId", displayExpr: "nombre", showSelectionControls: true, applyValueMode: "instantly", searchEnabled: true,
+              readOnly: ro || t.estado !== "Pendiente", placeholder: "Ninguno: la tarea no requiere aprobación" }, helpText: t.estado !== "Pendiente" ? "Solo se cambian mientras la tarea está Pendiente" : "" },
+          { dataField: "estado", label: { text: "Estado (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "circuito", label: { text: "Aprobaciones (calculado)" }, editorOptions: { readOnly: true } }
+        ],
+        extra: ($x, ro) => {
+          const $rc = $('<div class="card pad stack">').appendTo($x);
+          $rc.append('<span class="lbl" id="richLbl">Descripción de la tarea</span>');
+          editor = $("<div>").appendTo($rc).dxHtmlEditor({ value: d.descripcionHtml || "", readOnly: ro, height: 160, elementAttr: { "aria-labelledby": "richLbl" },
+            toolbar: { multiline: true, items: ["bold", "italic", "underline", "separator", "bulletList", "orderedList", "separator", "link"] } }).dxHtmlEditor("instance");
+          const $h = $('<div class="card pad stack">').appendTo($x);
+          $h.append("<h2>Historial</h2>");
+          pb.ui.mdGrid($h, "", [["f", "Fecha"], ["e", "Evento"], ["d", "Detalle"], ["u", "Usuario"]], d.historial.map(h => ({ f: pb.fechaHora(h.fecha), e: h.evento, d: h.detalle || "—", u: h.usuario })), "Sin eventos.");
+        },
+        alGuardar: async f => {
+          const r = await pb.post(pry.url("ActualizarTarea", "token=" + t.token), { hitoId: f.hitoId, titulo: f.titulo, area: f.area, tecnicoId: f.tecnicoId, orden: f.orden,
+            fechaInicio: pry.iso(f.inicio), fechaTerminacion: pry.iso(f.fecha), avance: f.avance || 0, aprobadorIds: t.estado === "Pendiente" ? f.aprob : null, descripcionHtml: editor.option("value") || null });
+          if (r === undefined) return;
+          pb.notify("Registro " + t.codigo + " guardado correctamente"); listado();
+        },
+        alEditar: () => ficha(t, "edicion"),
+        alVolver: listado
+      });
+    }
+
+    listado();
+  });
+</script>
+}

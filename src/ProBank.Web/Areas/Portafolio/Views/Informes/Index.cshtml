@@ -1,0 +1,90 @@
+@{ ViewData["Title"] = "Informes de seguimiento"; ViewData["Opcion"] = "informes"; }
+@section Scripts {
+<script src="~/js/portafolio.js" asp-append-version="true"></script>
+<script>
+  // Informes de seguimiento semanales o mensuales con la bitácora de tareas y los acuerdos del periodo.
+  pb.listo.then(() => {
+    const $c = $("#content");
+    let lista = null;
+    const periodo = i => i.tipo === "Mensual" && pb.aFecha(i.desde).getDate() === 1
+      ? pb.aFecha(i.desde).toLocaleDateString("es-EC", { month: "long", year: "numeric" }).replace(/^./, x => x.toUpperCase())
+      : pb.fecha(i.desde) + " – " + pb.fecha(i.hasta);
+
+    lista = pb.ui.grid({
+      $c, modulo: "Portafolio", titulo: "Informes de seguimiento", opcion: "informes", clave: "informeId",
+      cargar: () => pb.get(pry.url("Informes")),
+      columnas: [
+        { campo: "codigo", titulo: "Informe" }, { campo: "periodo", titulo: "Periodo", valor: periodo }, { campo: "tipo", titulo: "Tipo" },
+        { campo: "incluye", titulo: "Incluye" }, { campo: "estado", titulo: "Estado", pill: true }
+      ],
+      botones: [
+        { text: "Nuevo", icon: "add", type: "default", accion: "crear", onClick: () => periodoPopup(null) },
+        { text: "Editar", icon: "edit", accion: "editar", fila: true, onClick: periodoPopup },
+        { text: "Generar informe", icon: "textdocument", accion: "generar", fila: true, onClick: generar }
+      ],
+      alAbrir: i => i.estado === "Completado" ? ver(i) : pb.notify("Genere el informe para verlo", "info"),
+      detalle: async ($e, i) => {
+        pb.ui.mdHead($e, [i.codigo, periodo(i), i.tipo, "Incluye " + i.incluye.toLowerCase()].concat(i.fechaGenerado ? ["Generado el " + pb.fechaHora(i.fechaGenerado) + " por " + i.generadoPor] : []), i.estado);
+        const r = await pb.get(pry.url("ResumenInforme", "id=" + i.informeId));
+        if (r) pb.ui.mdGrid($e, "Bitácora y acuerdos del periodo", [["i", "Ítem"], ["b", "Bitácora"], ["ac", "Acuerdos"], ["s", "Estado"]],
+          r.map(x => ({ i: x.item, b: x.tareasConMovimiento + " tarea(s) con movimiento · avance " + x.avance + " %", ac: x.acuerdos + (x.cumplidos ? " (" + x.cumplidos + " cumplido)" : "") + (x.vencidos ? " · " + x.vencidos + " vencido(s)" : ""), s: x.estado })),
+          "Sin actividad en el periodo.");
+        const acc = [];
+        if (pb.can("informes", "generar")) acc.push({ text: "Generar informe", icon: "textdocument", type: "default", onClick: () => generar(i) });
+        if (i.estado === "Completado") acc.push({ text: "Ver informe", icon: "find", onClick: () => ver(i) });
+        if (acc.length) pb.ui.mdActions($e, acc);
+      }
+    });
+
+    function periodoPopup(i) {
+      const hoy = pry.hoy(), lunes = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - ((hoy.getDay() + 6) % 7));
+      const data = i ? { tipo: i.tipo, desde: pb.aFecha(i.desde), hasta: pb.aFecha(i.hasta) } : { tipo: "Semanal", desde: lunes, hasta: new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate() + 4) };
+      let form;
+      const sugerir = () => {
+        const d = data.desde || hoy;
+        if (data.tipo === "Mensual") { form.updateData("desde", new Date(d.getFullYear(), d.getMonth(), 1)); form.updateData("hasta", new Date(d.getFullYear(), d.getMonth() + 1, 0)); }
+        else { const l = new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7)); form.updateData("desde", l); form.updateData("hasta", new Date(l.getFullYear(), l.getMonth(), l.getDate() + 4)); }
+      };
+      pb.ui.openPopup(i ? "Editar periodo · " + i.codigo : "Nuevo informe de seguimiento", $f => (form = $("<div>").appendTo($f).dxForm({ formData: data, labelLocation: "top", showColonAfterLabel: false, colCount: 2, items: [
+        { dataField: "tipo", label: { text: "Tipo" }, colSpan: 2, editorType: "dxRadioGroup", editorOptions: { items: ["Semanal", "Mensual"], layout: "horizontal", onValueChanged: () => setTimeout(sugerir, 0) } },
+        { dataField: "desde", label: { text: "Desde" }, isRequired: true, editorType: "dxDateBox", editorOptions: { displayFormat: "dd/MM/yyyy" } },
+        { dataField: "hasta", label: { text: "Hasta" }, isRequired: true, editorType: "dxDateBox", editorOptions: { displayFormat: "dd/MM/yyyy" },
+          validationRules: [{ type: "custom", message: "No puede ser anterior al inicio", validationCallback: o => !o.value || o.value >= data.desde }] },
+        { colSpan: 2, template: () => $('<p class="muted" style="margin:0">').text("Incluye la bitácora de tareas y los acuerdos semanales del periodo." + (i ? " Cambiar el periodo devuelve el informe a Borrador." : "")) }
+      ] }).dxForm("instance")), async f => {
+        if (!f.validate().isValid) return false;
+        const r = await pb.post(pry.url("GuardarInforme", i ? "id=" + i.informeId : ""), { tipo: data.tipo, desde: pry.iso(data.desde), hasta: pry.iso(data.hasta) });
+        if (r === undefined) return false;
+        pb.notify(i ? "Informe " + i.codigo + " actualizado" : "Informe registrado como borrador"); lista.recargar();
+      }, "Guardar", 480);
+    }
+
+    async function generar(i) {
+      const r = await pb.post(pry.url("GenerarInforme", "id=" + i.informeId));
+      if (r === undefined) return;
+      pb.notify(r); await lista.recargar(); ver(i);
+    }
+
+    async function ver(i) {
+      const d = await pb.get(pry.url("Informe", "id=" + i.informeId));
+      if (!d || !d.contenidoHtml) return;
+      pb.ui.openPopup(d.codigo + " · " + periodo(d), $f => {
+        const $main = $('<div class="vw-main">').appendTo($f);
+        const $tb = $('<div class="vw-toolbar">').appendTo($main);
+        pb.ui.button($("<div>").appendTo($tb), { text: "Imprimir o guardar PDF", icon: "print", onClick: () => imprimir(d) });
+        $tb.append('<span class="vw-pg">Página 1 de 1</span>');
+        // El HTML lo arma la API codificando cada texto; se muestra tal cual en el visor.
+        $('<div class="vw-page">').appendTo($main).html(d.contenidoHtml);
+        return null;
+      }, () => true, "Cerrar", 980);
+    }
+
+    function imprimir(d) {
+      const w = window.open("", "_blank");
+      if (!w) return pb.notify("Permita las ventanas emergentes para imprimir", "warning");
+      w.document.write("<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'><title>" + pb.esc(d.codigo) + "</title><link rel='stylesheet' href='/css/site.css'></head><body style='background:#fff'><div class='vw-page'>" + d.contenidoHtml + "</div></body></html>");
+      w.document.close(); w.focus(); setTimeout(() => w.print(), 400);
+    }
+  });
+</script>
+}

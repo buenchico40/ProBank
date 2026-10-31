@@ -1,0 +1,34 @@
+@{ ViewData["Title"] = "Auditoría"; ViewData["Opcion"] = "auditoria"; }
+@section Scripts {
+<script>
+  // SEG-05: auditoría general, solo lectura. Filtro por rango de fechas (por defecto los últimos 7 días) y módulo.
+  pb.listo.then(() => {
+    const iso = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    const hoy = new Date(), f = { desde: new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 7), hasta: hoy, modulo: "Todos" };
+    const MODULOS = ["Todos", "Seguridad", "Coactivas", "Portafolio", "Compras y pagos TI", "Cumplimiento", "Credenciales", "Marketing", "Consultas dinámicas", "Versiones", "Reportes"];
+    let lista;
+    const recargar = () => lista && lista.recargar();
+    lista = pb.ui.grid({
+      $c: $("#content"), modulo: "Seguridad", titulo: "Auditoría", opcion: "auditoria", clave: "auditoriaId",
+      cargar: () => pb.get("/Seguridad/Auditoria/Datos?desde=" + iso(f.desde) + "&hasta=" + iso(f.hasta) + "&modulo=" + encodeURIComponent(f.modulo === "Todos" ? "" : f.modulo)),
+      filtros: [
+        { location: "before", widget: "dxDateBox", options: { value: f.desde, displayFormat: "dd/MM/yyyy", width: 140, inputAttr: { "aria-label": "Desde" }, onValueChanged: e => { f.desde = e.value; recargar(); } } },
+        { location: "before", widget: "dxDateBox", options: { value: f.hasta, displayFormat: "dd/MM/yyyy", width: 140, inputAttr: { "aria-label": "Hasta" }, onValueChanged: e => { f.hasta = e.value; recargar(); } } },
+        { location: "before", widget: "dxSelectBox", options: { items: MODULOS, value: f.modulo, width: 200, inputAttr: { "aria-label": "Módulo" }, onValueChanged: e => { f.modulo = e.value; recargar(); } } }
+      ],
+      columnas: [
+        { campo: "fecha", titulo: "Fecha y hora", valor: a => pb.fechaHora(a.fecha) + ":" + String(new Date(a.fecha).getSeconds()).padStart(2, "0"), ancho: 160 },
+        { campo: "usuario", titulo: "Usuario" }, { campo: "accion", titulo: "Acción" },
+        { campo: "modulo", titulo: "Módulo" }, { campo: "ip", titulo: "IP" }
+      ],
+      vacio: "No hay registros de auditoría en el rango elegido.",
+      detalle: ($e, a) => {
+        pb.ui.mdHead($e, [a.accion, pb.fechaHora(a.fecha), "Usuario: " + a.usuario + (a.nombre ? " (" + a.nombre + ")" : ""), "Módulo: " + a.modulo, "IP: " + (a.ip || "—")]);
+        pb.ui.mdGrid($e, "Datos registrados", [["c", "Campo"], ["v", "Valor"]],
+          [{ c: "Rol activo", v: a.rolActivo }, { c: "Detalle", v: a.detalle }]);
+        pb.ui.mdNote($e, "Registro de auditoría " + a.auditoriaId + " · el registro de auditoría no se puede editar ni eliminar.");
+      }
+    });
+  });
+</script>
+}

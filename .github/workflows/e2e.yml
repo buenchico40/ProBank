@@ -1,0 +1,29 @@
+name: e2e
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [deploy]
+    types: [completed]
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+    environment: qa
+    defaults:
+      run:
+        working-directory: test/e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx playwright install --with-deps
+      - run: npx playwright test --project=escritorio --project=telefono
+        env:
+          PROBANK_BASE_URL: ${{ vars.PROBANK_BASE_URL }}
+          PROBANK_USUARIOS: ${{ secrets.PROBANK_USUARIOS }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: test/e2e/reports/

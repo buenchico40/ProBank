@@ -1,0 +1,39 @@
+erDiagram
+  Promocion ||--o{ PromocionAudiencia : "visible para"
+  Comunicado ||--o{ ComunicadoAudiencia : "visible para"
+  Promocion {
+    int PromocionId PK
+    uniqueidentifier Token
+    varchar Codigo
+    nvarchar Titulo
+    varchar Ubicacion "panel principal, inicio de sesión"
+    nvarchar ImagenBlob "Azure Blob Storage"
+    nvarchar TextoAlternativo
+    nvarchar Enlace
+    date VigenteDesde
+    date VigenteHasta
+    int Orden "orden en el carrusel"
+    varchar Estado "borrador, publicado, retirado"
+    int PublicadoPorId FK "seg.Usuario"
+  }
+  PromocionAudiencia {
+    int PromocionId PK,FK
+    int RolId PK,FK "seg.Rol · sin filas = todos"
+  }
+  Comunicado {
+    int ComunicadoId PK
+    uniqueidentifier Token
+    varchar Codigo
+    nvarchar Titulo
+    varchar Tipo "aviso, noticia, mantenimiento, campaña"
+    nvarchar ContenidoHtml "editor enriquecido"
+    date PublicadoDesde
+    date PublicadoHasta
+    bit Destacado
+    varchar Estado "borrador, publicado, retirado"
+    int PublicadoPorId FK "seg.Usuario"
+  }
+  ComunicadoAudiencia {
+    int ComunicadoId PK,FK
+    int RolId PK,FK "seg.Rol · sin filas = todos"
+  }

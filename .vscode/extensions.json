@@ -1,0 +1,17 @@
+{
+  "recommendations": [
+    "ms-dotnettools.csdevkit",
+    "ms-dotnettools.csharp",
+    "ms-mssql.mssql",
+    "ms-mssql.sql-database-projects-vscode",
+    "hashicorp.terraform",
+    "ms-azuretools.vscode-azureterraform",
+    "ms-playwright.playwright",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "bierner.markdown-mermaid",
+    "editorconfig.editorconfig",
+    "ms-vscode-remote.remote-containers",
+    "github.vscode-github-actions"
+  ]
+}

@@ -1,0 +1,7 @@
+CREATE TABLE [seg].[Rol]
+(
+RolId       INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_Rol PRIMARY KEY,
+    Nombre      VARCHAR(60) NOT NULL CONSTRAINT UQ_Rol_Nombre UNIQUE,
+    Descripcion NVARCHAR(300) NULL,
+    Estado      VARCHAR(20) NOT NULL CONSTRAINT DF_Rol_Estado DEFAULT ('Activo')
+);

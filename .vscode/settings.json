@@ -1,0 +1,14 @@
+{
+  "editor.formatOnSave": true,
+  "dotnet.defaultSolution": "src/ProBank.sln",
+  "files.exclude": {
+    "**/bin": true,
+    "**/obj": true,
+    "**/.terraform": true,
+    "**/node_modules": true
+  },
+  "[terraform]": { "editor.defaultFormatter": "hashicorp.terraform" },
+  "[typescript]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "playwright.reuseBrowser": true,
+  "terraform.experimentalFeatures.validateOnSave": true
+}

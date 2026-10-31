@@ -1,0 +1,98 @@
+@{ ViewData["Title"] = "Coactivas"; ViewData["Opcion"] = "coactivas"; }
+@section Scripts {
+<script src="~/js/coactivas.js" asp-append-version="true"></script>
+<script>
+  // COA-01, COA-03 y COA-05: cada coactiva con su cobertura; desde el detalle se bloquea, levanta o transfiere.
+  pb.listo.then(() => {
+    const $c = $("#content"), url = (a, q) => "/Coactivas/Coactivas/" + a + (q ? "?" + q : "");
+    let lista = null;
+
+    function listado() {
+      $c.empty();
+      lista = pb.ui.grid({
+        $c, modulo: "Coactivas", titulo: "Coactivas", opcion: "coactivas", clave: "token",
+        cargar: () => pb.get(url("Datos")),
+        columnas: [
+          { campo: "numeroProceso", titulo: "N.º de proceso" }, { campo: "oficio", titulo: "Oficio" }, { campo: "entidad", titulo: "Entidad" },
+          { campo: "cliente", titulo: "Cliente / empresa" }, { campo: "identificacion", titulo: "Identificación" },
+          { campo: "monto", titulo: "Monto", formato: "dinero" }, { campo: "bloqueado", titulo: "Bloqueado vigente", formato: "dinero" },
+          { campo: "levantado", titulo: "Liberado", valor: x => x.levantado > 0 ? pb.dinero(x.levantado) : "—" },
+          { campo: "transferido", titulo: "Transferido", valor: x => x.transferido > 0 ? pb.dinero(x.transferido) : "—" },
+          { campo: "cobertura", titulo: "Cobertura", pill: true }, { campo: "estado", titulo: "Estado", pill: true }
+        ],
+        anulada: x => x.estado === "Anulado",
+        botones: [
+          { text: "Nuevo", icon: "add", type: "default", accion: "crear", onClick: nueva },
+          { text: "Editar", icon: "edit", accion: "editar", fila: true, onClick: x => ficha(x.token, "edicion") },
+          { text: "Anular", icon: "clear", accion: "eliminar", fila: true, onClick: anular }
+        ],
+        alAbrir: x => ficha(x.token, "consulta"),
+        detalle: ($e, x) => coa.panel($e, x.token, {}, () => lista.recargar())
+      });
+    }
+
+    // Una coactiva nueva siempre llega con un oficio: se elige el oficio y se agrega como orden de bloqueo
+    async function nueva() {
+      const oficios = ((await pb.get("/Coactivas/Oficios/Datos")) || []).filter(o => o.estado !== "Anulado");
+      if (!oficios.length) return pb.notify("Registre primero el oficio en Coactivas › Oficios", "warning");
+      const data = { oficio: oficios[0].token };
+      pb.ui.openPopup("Nueva coactiva · elija el oficio", $f => $("<div>").appendTo($f).dxForm({ formData: data, labelLocation: "top", showColonAfterLabel: false, items: [
+        { dataField: "oficio", label: { text: "Oficio que la trae" }, editorType: "dxSelectBox", isRequired: true,
+          editorOptions: { dataSource: oficios, valueExpr: "token", displayExpr: o => o && (o.numero + " · " + o.remitidoPor + " · " + pb.fecha(o.recibido)), searchEnabled: true } }] }).dxForm("instance"),
+        f => { if (!f.validate().isValid) return false; const o = oficios.find(x => x.token === data.oficio); setTimeout(() => coa.ordenPopup(o, () => lista.recargar()), 0); }, "Continuar", 520, { icono: "chevronright" });
+    }
+
+    async function anular(x) {
+      if (x.estado === "Anulado") return pb.notify("El registro " + x.numeroProceso + " ya está anulado", "warning");
+      if (!await pb.ui.confirmar("Anular registro", "¿Desea anular el registro <b>" + pb.esc(x.numeroProceso) + "</b>? El registro se conserva con estado Anulado para auditoría y sus bloqueos vigentes se liberan.", "Anular", "danger", "clear")) return;
+      const r = await pb.post(url("Anular", "token=" + x.token));
+      if (r !== undefined) { pb.notify("Registro " + x.numeroProceso + " anulado · " + r); lista.recargar(); }
+    }
+
+    async function ficha(token, modo) {
+      const d = await pb.get(url("Detalle", "token=" + token));
+      if (!d) return;
+      const anulada = d.estado === "Anulado";
+      if (modo === "edicion" && anulada) return pb.notify("La coactiva está anulada", "warning");
+      const datos = { numeroProceso: d.numeroProceso, oficio: d.oficio, entidad: d.entidad, cliente: d.cliente, identificacion: d.tipoIdentificacion + " " + d.identificacion,
+        monto: d.monto, productos: coa.listaProd(d.productosPermitidos), bloqueado: pb.dinero(d.bloqueado), levantado: pb.dinero(d.levantado),
+        transferido: pb.dinero(d.transferido), cobertura: d.cobertura, estado: d.estado, observacion: d.observacion || "" };
+      pb.ui.detalle({
+        $c, modulo: "Coactivas", titulo: "Coactivas", modo, nombre: d.numeroProceso, token: d.token, datos,
+        soloLectura: modo === "consulta" && (anulada || !pb.can("coactivas", "editar")),
+        items: ro => [
+          { dataField: "numeroProceso", label: { text: "N.º de proceso" }, editorOptions: { readOnly: true } },
+          { dataField: "oficio", label: { text: "Oficio" }, editorOptions: { readOnly: true } },
+          { dataField: "entidad", label: { text: "Entidad" }, editorOptions: { readOnly: true } },
+          { dataField: "cliente", label: { text: "Cliente / empresa" }, editorOptions: { readOnly: true } },
+          { dataField: "identificacion", label: { text: "Identificación (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "monto", label: { text: "Monto" }, isRequired: !ro, editorType: "dxNumberBox", editorOptions: { format: "$ #,##0.00", min: 0.01 } },
+          { dataField: "productos", label: { text: "Productos a bloquear (vacío = todos)" }, editorType: "dxTagBox",
+            editorOptions: { items: coa.PRODTIPOS, showSelectionControls: true, applyValueMode: "instantly", placeholder: "Todos los productos del cliente" } },
+          { dataField: "bloqueado", label: { text: "Bloqueado vigente (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "levantado", label: { text: "Liberado (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "transferido", label: { text: "Transferido (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "cobertura", label: { text: "Cobertura (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "estado", label: { text: "Estado (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "observacion", label: { text: "Observación" }, colSpan: 3, editorType: "dxTextArea", editorOptions: { height: 56, maxLength: 500 } }
+        ],
+        extra: $x => {
+          const $p = $('<div class="card pad stack">').appendTo($x);
+          $p.append("<h2>Productos del cliente y bloqueos</h2>");
+          coa.panel($("<div>").appendTo($p), d.token, { oficio: d.oficio });
+        },
+        alGuardar: async f => {
+          const r = await pb.post(url("Actualizar", "token=" + d.token), { monto: f.monto, productos: f.productos, observacion: f.observacion || null });
+          if (r === undefined) return;
+          pb.notify("Registro " + d.numeroProceso + " guardado correctamente"); listado();
+        },
+        alEditar: () => ficha(token, "edicion"),
+        alVolver: listado
+      });
+    }
+
+    const abrir = new URLSearchParams(location.search).get("abrir");
+    if (abrir) ficha(abrir, "consulta"); else listado();
+  });
+</script>
+}

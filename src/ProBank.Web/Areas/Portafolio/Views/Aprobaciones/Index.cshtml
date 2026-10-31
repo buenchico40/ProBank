@@ -1,0 +1,71 @@
+@{ ViewData["Title"] = "Aprobaciones"; ViewData["Opcion"] = "aprobaciones"; }
+@section Scripts {
+<script src="~/js/portafolio.js" asp-append-version="true"></script>
+<script>
+  // PRY-04 y PRY-05: tareas que el usuario debe aprobar; si son varios aprobadores aprueban todos; el rechazo exige comentario.
+  pb.listo.then(() => {
+    const $c = $("#content");
+    const TABS = [["Pendiente", "Pendientes"], ["Aprobada", "Aprobadas"], ["Rechazada", "Rechazadas"]];
+    let tab = "Pendiente", todas = [], lista = null, $tabs = null;
+
+    async function cargar() {
+      const r = await pb.get(pry.url("Aprobaciones"));
+      if (r === undefined) return undefined;
+      todas = r;
+      if ($tabs) $tabs.option("dataSource", TABS.map(t => ({ id: t[0], text: t[1] + " (" + todas.filter(x => x.estado === t[0]).length + ")" })));
+      return todas.filter(x => x.estado === tab);
+    }
+
+    lista = pb.ui.grid({
+      $c, modulo: "Portafolio", titulo: "Aprobaciones", opcion: "aprobaciones", clave: "token",
+      antes: $x => { $tabs = $("<div>").appendTo($x).dxTabs({ dataSource: TABS.map(t => ({ id: t[0], text: t[1] })), selectedIndex: 0, width: "auto", scrollByContent: true,
+        onItemClick: e => { tab = e.itemData.id; lista.recargar(); } }).dxTabs("instance"); },
+      cargar,
+      columnas: [
+        { campo: "codigo", titulo: "Tarea", valor: a => a.codigo + " · " + a.titulo }, { campo: "item", titulo: "Ítem" },
+        { campo: "solicitadaPor", titulo: "Solicitada por" }, { campo: "enviada", titulo: "Fecha", formato: "fecha" },
+        { campo: "aprobaciones", titulo: "Aprobaciones" }, { campo: "estado", titulo: "Estado", pill: true }
+      ],
+      botones: [
+        { text: "Aprobar", icon: "check", type: "default", accion: "aprobar", fila: true, onClick: aprobar },
+        { text: "Rechazar", icon: "close", accion: "aprobar", fila: true, onClick: rechazar }
+      ],
+      detalle: async ($e, a) => {
+        pb.ui.mdHead($e, [a.codigo, "Ítem " + a.item, "Solicitada por " + a.solicitadaPor, pb.fecha(a.enviada)], a.estado);
+        const d = await pb.get(pry.url("Tarea", "token=" + a.token));
+        if (!d) return;
+        pb.ui.mdGrid($e, "Aprobadores (" + a.aprobaciones + ")", [["a", "Aprobador"], ["u", "Usuario"], ["d", "Decisión"], ["f", "Fecha"], ["c", "Comentario"]],
+          d.aprobadores.map(x => ({ a: x.nombre, u: x.usuario, d: x.decision || "Pendiente", f: x.fecha ? pb.fechaHora(x.fecha) : "—", c: x.comentario || "—" })));
+        pb.ui.mdNote($e, "Los aprobadores se asignan en cada tarea. Si tiene más de uno, todos deben aprobar, en cualquier orden, para que la tarea pueda ejecutarse. Un rechazo exige comentario y devuelve la tarea al técnico.");
+        if (a.estado === "Pendiente" && pb.can("aprobaciones", "aprobar"))
+          pb.ui.mdActions($e, [{ text: "Aprobar", icon: "check", type: "default", onClick: () => aprobar(a) }, { text: "Rechazar", icon: "close", onClick: () => rechazar(a) }]);
+      }
+    });
+
+    function pendiente(a) {
+      if (a.estado !== "Pendiente") { pb.notify("Solo se resuelven tareas pendientes", "warning"); return false; }
+      if (a.miDecision === "Aprobada") { pb.notify("Usted ya aprobó la tarea " + a.codigo + "; faltan los demás aprobadores", "info"); return false; }
+      return true;
+    }
+    async function aprobar(a) {
+      if (!pendiente(a)) return;
+      const r = await pb.post(pry.url("AccionTarea", "token=" + a.token + "&accion=aprobar"), null);
+      if (r === undefined) return;
+      const [ok, total] = String(r).split(" de ").map(Number);
+      pb.notify(ok < total ? "Su aprobación quedó registrada (" + r + ")" : "Tarea " + a.codigo + " aprobada por todos sus aprobadores: ya puede ejecutarse");
+      lista.recargar();
+    }
+    function rechazar(a) {
+      if (!pendiente(a)) return;
+      const data = { c: "" };
+      pb.ui.openPopup("Rechazar tarea · " + a.codigo, $f => $("<div>").appendTo($f).dxForm({ formData: data, labelLocation: "top", showColonAfterLabel: false,
+        items: [{ dataField: "c", label: { text: "Motivo del rechazo" }, editorType: "dxTextArea", isRequired: true, editorOptions: { height: 80, maxLength: 1000 } }] }).dxForm("instance"), async f => {
+        if (!f.validate().isValid) return false;
+        const r = await pb.post(pry.url("AccionTarea", "token=" + a.token + "&accion=rechazar"), { comentario: data.c });
+        if (r === undefined) return false;
+        pb.notify("Tarea " + a.codigo + " rechazada: vuelve al técnico con el comentario"); lista.recargar();
+      }, "Rechazar", 480);
+    }
+  });
+</script>
+}

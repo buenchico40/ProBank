@@ -1,0 +1,28 @@
+@model ProBank.Web.Controllers.IngresoVista
+@{ Layout = null; }
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ingresar · ProBank</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body class="ingreso">
+  <main class="card ingreso-caja">
+    <span class="logo">ProBank</span>
+    <p class="ingreso-sub">Ingresa con tu usuario y contraseña.</p>
+    @if (Model.Aviso is not null) { <p class="ingreso-aviso" role="status">@Model.Aviso</p> }
+    @if (Model.Error is not null) { <p class="ingreso-error" role="alert">@Model.Error</p> }
+    <form method="post" asp-action="Ingresar">
+      <input type="hidden" asp-for="ReturnUrl" />
+      <label for="Usuario">Usuario</label>
+      <input asp-for="Usuario" autocomplete="username" autofocus required maxlength="60" />
+      <label for="Clave">Contraseña</label>
+      <input asp-for="Clave" type="password" autocomplete="current-password" required />
+      <button type="submit">Ingresar</button>
+    </form>
+  </main>
+</body>
+</html>

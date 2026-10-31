@@ -1,0 +1,20 @@
+{
+  "name": "ProBank",
+  "image": "mcr.microsoft.com/devcontainers/dotnet:1-10.0",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "22" },
+    "ghcr.io/devcontainers/features/terraform:1": {},
+    "ghcr.io/devcontainers/features/azure-cli:1": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "postCreateCommand": "bash scripts/bootstrap.sh",
+  "forwardPorts": [7001, 7101],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-dotnettools.csdevkit", "ms-mssql.mssql", "ms-mssql.sql-database-projects-vscode",
+        "hashicorp.terraform", "ms-playwright.playwright", "bierner.markdown-mermaid"
+      ]
+    }
+  }
+}

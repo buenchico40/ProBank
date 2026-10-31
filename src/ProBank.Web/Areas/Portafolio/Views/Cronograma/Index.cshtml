@@ -1,0 +1,79 @@
+@{ ViewData["Title"] = "Cronograma (Gantt)"; ViewData["Opcion"] = "gantt"; }
+@section Scripts {
+<script src="~/js/portafolio.js" asp-append-version="true"></script>
+<script>
+  // PRY-07 (renderGantt del prototipo): vista por ítem (con hitos y tareas) y vista de todas las tareas; filtrado al ítem desde su detalle.
+  pb.listo.then(() => {
+    const $content = $("#content");
+    const TIPOCOL = { Proyecto: "#0F6CBD", Mejora: "#1E7B3A", Bug: "#D40E14" };
+    const ESTCOL = { Completada: "#1E7B3A", "En curso": "#0F6CBD", Pendiente: "#A86B00", Atrasada: "#D40E14" };
+    const S = { vista: "items", filtro: "Todas", item: new URLSearchParams(location.search).get("item") };
+    const hoy = pry.hoy();
+    const fin = d => { const x = pb.aFecha(d); x.setHours(23, 59); return x; };
+
+    async function render() {
+      $content.empty();
+      pb.ui.head($content, "Portafolio", "Cronograma (Gantt)");
+      $content.append("<h1>Cronograma (Gantt)</h1>");
+      const d = await pb.get(pry.url("Cronograma", S.item ? "item=" + S.item : ""));
+      if (!d) return;
+      const est = t => t.estado === "Completada" ? "Completada" : fin(t.fechaTerminacion) < hoy ? "Atrasada" : t.avance > 0 || t.estado === "EnCurso" ? "En curso" : "Pendiente";
+      const avance = ts => ts.length ? Math.round(ts.filter(t => t.estado === "Completada").length / ts.length * 100) : 0;
+      const items = [{ location: "before", widget: "dxButtonGroup", options: { items: [{ id: "items", text: "Por proyecto, mejora y bug", icon: "folder" }, { id: "tareas", text: "Todas las tareas", icon: "checklist" }],
+        keyExpr: "id", selectedItemKeys: [S.vista], stylingMode: "outlined", onItemClick: e => { S.vista = e.itemData.id; render(); } } }];
+      if (S.vista === "tareas") items.push({ location: "before", widget: "dxButtonGroup", options: { items: ["Todas", "Pendientes", "Completadas"].map(x => ({ id: x, text: x })), keyExpr: "id", selectedItemKeys: [S.filtro], stylingMode: "outlined", onItemClick: e => { S.filtro = e.itemData.id; render(); } } });
+      const it0 = S.item && d.items[0];
+      if (S.item && it0) items.push({ location: "before", widget: "dxButton", options: { text: "Solo " + it0.codigo + " · ver todos", icon: "close", stylingMode: "contained", type: "default", hint: "Quitar el filtro y ver todos los proyectos, mejoras y bugs", onClick: () => { S.item = null; history.replaceState(null, "", location.pathname); render(); } } });
+      if (pb.can("proyectos", "crear")) items.push({ location: "after", widget: "dxButton", locateInMenu: "auto", showText: "always", options: { text: "Nuevo proyecto, mejora o bug", icon: "add", type: "default", stylingMode: "contained", onClick: () => { location.href = "/Portafolio/Proyectos"; } } });
+      $('<div class="gridbar">').appendTo($content).dxToolbar({ multiline: pb.isPhone(), items });
+      if (it0) $content.append($('<p class="muted" style="margin:0 0 8px">').text("Cronograma de " + it0.codigo + " · " + it0.titulo + " (" + it0.tipo + ") con sus hitos y tareas."));
+
+      let T = [], cols, legend;
+      if (S.vista === "items") {
+        let id = 1;
+        d.items.forEach(it => {
+          const ts = d.tareas.filter(t => t.itemId === it.itemId), hs = d.hitos.filter(h => h.itemId === it.itemId);
+          const span = ts.map(t => [pb.aFecha(t.fechaInicio), fin(t.fechaTerminacion)]).concat(hs.filter(h => h.fechaInicio && h.fechaFin).map(h => [pb.aFecha(h.fechaInicio), fin(h.fechaFin)]));
+          if (!span.length) return;
+          const iid = id++;
+          T.push({ id: iid, parentId: 0, title: it.codigo + " · " + it.titulo, tipo: it.tipo, estado: it.estado, start: new Date(Math.min(...span.map(x => x[0]))), end: new Date(Math.max(...span.map(x => x[1]))), progress: avance(ts), color: TIPOCOL[it.tipo] });
+          hs.forEach(h => {
+            const ht = ts.filter(t => t.hitoId === h.hitoId);
+            const hsp = ht.length ? ht.map(t => [pb.aFecha(t.fechaInicio), fin(t.fechaTerminacion)]) : h.fechaInicio && h.fechaFin ? [[pb.aFecha(h.fechaInicio), fin(h.fechaFin)]] : [];
+            if (!hsp.length) return;
+            const hid = id++;
+            T.push({ id: hid, parentId: iid, title: "Hito: " + h.nombre, tipo: "Hito", estado: "", start: new Date(Math.min(...hsp.map(x => x[0]))), end: new Date(Math.max(...hsp.map(x => x[1]))), progress: avance(ht), color: TIPOCOL[it.tipo] });
+            ht.forEach(t => T.push({ id: id++, parentId: hid, title: t.codigo + " · " + t.titulo, tipo: "Tarea", estado: est(t), start: pb.aFecha(t.fechaInicio), end: fin(t.fechaTerminacion), progress: t.avance, color: TIPOCOL[it.tipo] }));
+          });
+          ts.filter(t => !t.hitoId).forEach(t => T.push({ id: id++, parentId: iid, title: t.codigo + " · " + t.titulo, tipo: "Tarea", estado: est(t), start: pb.aFecha(t.fechaInicio), end: fin(t.fechaTerminacion), progress: t.avance, color: TIPOCOL[it.tipo] }));
+        });
+        cols = [{ dataField: "title", caption: "Proyecto · hito · tarea", width: 280 }, { dataField: "tipo", caption: "Tipo", width: 80 }, { dataField: "progress", caption: "Avance", width: 70, alignment: "right", customizeText: c => c.value + " %" }];
+        legend = '<span><i style="background:' + TIPOCOL.Proyecto + '"></i>Proyecto</span><span><i style="background:' + TIPOCOL.Mejora + '"></i>Mejora</span><span><i style="background:' + TIPOCOL.Bug + '"></i>Bug</span><span>Avance del ítem = tareas completadas ÷ total de tareas · despliegue un ítem para ver sus hitos y tareas</span>';
+      } else {
+        const sel = d.tareas.filter(t => S.filtro === "Todas" || (S.filtro === "Completadas" ? t.estado === "Completada" : t.estado !== "Completada"));
+        T = sel.map((t, k) => ({ id: k + 1, parentId: 0, title: t.codigo + " · " + t.titulo, item: t.item, area: t.area, estado: est(t), start: pb.aFecha(t.fechaInicio), end: fin(t.fechaTerminacion), progress: t.avance, color: ESTCOL[est(t)] }));
+        cols = [{ dataField: "title", caption: "Tarea", width: 230 }, { dataField: "item", caption: "Ítem", width: 76 },
+          { dataField: "estado", caption: "Estado", width: 120, cellTemplate: ($c, i) => $("<span>").addClass(i.value === "Completada" ? "pill pill-g" : i.value === "Atrasada" ? "pill pill-r" : i.value === "En curso" ? "pill pill-b" : "pill pill-a").text(i.value).appendTo($c) }];
+        const n = x => d.tareas.filter(t => est(t) === x).length;
+        legend = Object.keys(ESTCOL).map(k => '<span><i style="background:' + ESTCOL[k] + '"></i>' + k + " (" + n(k) + ")</span>").join("") + "<span>" + d.tareas.length + (it0 ? " tareas de " + it0.codigo : " tareas de todos los ítems") + ", ordenadas por fecha de inicio</span>";
+      }
+      const $card = $('<div class="card gridcard">').appendTo($content);
+      if (!T.length) { $card.append('<p class="muted" style="padding:16px">' + (it0 ? pb.esc(it0.codigo) + " aún no tiene tareas planificadas. Créelas con «Nueva tarea» desde el detalle del ítem." : "No hay tareas para el filtro seleccionado.") + "</p>"); return; }
+      const ini = new Date(Math.min(...T.map(t => t.start))), finR = new Date(Math.max(...T.map(t => t.end)));
+      ini.setDate(ini.getDate() - 7); finR.setDate(finR.getDate() + 7);
+      let first = true;
+      $("<div>").appendTo($card).dxGantt({
+        tasks: { dataSource: T, keyExpr: "id", parentIdExpr: "parentId", titleExpr: "title", startExpr: "start", endExpr: "end", progressExpr: "progress", colorExpr: "color" },
+        editing: { enabled: false }, scaleType: "auto", taskListWidth: pb.isPhone() ? 200 : (S.vista === "items" ? 430 : 440), stripLines: [{ start: new Date(), title: "Hoy", cssClass: "gantt-today" }],
+        height: S.vista === "items" ? 420 : Math.min(560, 120 + T.length * 38), rootValue: 0, startDateRange: ini, endDateRange: finR, showResources: false, taskTitlePosition: "none",
+        toolbar: { items: (S.vista === "items" ? ["collapseAll", "expandAll", "separator"] : []).concat(["zoomIn", "zoomOut"]) },
+        columns: cols,
+        onContentReady: e => { if (first && S.vista === "items") { first = false; if (S.item) e.component.expandAll(); else e.component.collapseAll(); } },
+        taskTooltipContentTemplate: (c, t) => $('<div style="padding:8px;font-size:13px;line-height:1.4">').append($("<b>").text(t.title)).append($("<div>").text((t.estado ? t.estado + " · " : "") + t.progress + " % · " + pb.fecha(t.start) + " a " + pb.fecha(t.end)))
+      });
+      $card.append('<div class="legend">' + legend + "</div>");
+    }
+    render();
+  });
+</script>
+}

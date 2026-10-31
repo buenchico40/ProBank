@@ -1,0 +1,27 @@
+@{ ViewData["Title"] = "Consultas dinámicas"; }
+<h1>Ejecutar consulta</h1>
+<div class="card pad"><div id="form"></div><div id="ejecutar" style="margin-top:12px"></div></div>
+<div class="card"><div id="resultado"></div></div>
+
+@section Scripts {
+<script>
+  // SQL-01..06: solo procedimientos publicados; variables como "Fin del mes anterior" se resuelven en la API
+  const data = { consultaCodigo: "", conexionId: null, parametros: [] };
+  const form = $("#form").dxForm({ formData: data, labelLocation: "top", colCount: 2, items: [
+    { dataField: "consultaCodigo", label: { text: "Consulta (código)" }, isRequired: true },
+    { dataField: "conexionId", label: { text: "Base de datos (id de conexión permitida)" }, isRequired: true, editorType: "dxNumberBox" }
+  ]}).dxForm("instance");
+
+  $("#ejecutar").dxButton({ text: "Ejecutar", icon: "runner", type: "default", onClick: async () => {
+    if (!form.validate().isValid) return;
+    const r = await pb.post("/ConsultasDinamicas/Consultas/Ejecutar", data);
+    if (!r) return;
+    if (!r.columnas.length) return pb.aviso("Ejecución " + r.ejecucion + " registrada: espera aprobación");
+    $("#resultado").dxDataGrid({
+      dataSource: r.filas, columns: r.columnas, showBorders: true, filterRow: { visible: true }, searchPanel: { visible: true },
+      groupPanel: { visible: true }, paging: { pageSize: 20 }, export: { enabled: true, formats: ["xlsx", "pdf"] }
+    });
+    pb.aviso(r.filas.length + " filas" + (r.truncado ? " (truncado al límite)" : ""));
+  }});
+</script>
+}

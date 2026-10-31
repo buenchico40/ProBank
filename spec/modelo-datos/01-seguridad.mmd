@@ -1,0 +1,121 @@
+erDiagram
+  Usuario ||--o{ UsuarioRol : tiene
+  Rol ||--o{ UsuarioRol : asignado
+  Rol ||--o{ Usuario : "predeterminado"
+  Modulo ||--o{ Opcion : agrupa
+  Opcion ||--o{ Funcion : "funciones específicas"
+  Rol ||--o{ RolPermiso : otorga
+  Opcion ||--o{ RolPermiso : sobre
+  Accion ||--o{ RolPermiso : permite
+  Rol ||--o{ RolFuncion : otorga
+  Funcion ||--o{ RolFuncion : sobre
+  Usuario ||--o{ Sesion : inicia
+  Rol ||--o{ Sesion : "rol activo"
+  Usuario ||--o{ Auditoria : ejecuta
+  Opcion ||--o{ Auditoria : en
+  Usuario ||--o{ Notificacion : recibe
+  Usuario ||--o{ ColaTarea : solicita
+  Usuario {
+    int UsuarioId PK
+    uniqueidentifier Token "opaco, anti-IDOR"
+    nvarchar EntraObjectId "null si es cuenta local"
+    nvarchar Upn
+    nvarchar Nombre
+    bit EsCuentaLocal
+    varbinary HashClave "solo cuenta local"
+    bit SegundoFactor
+    int RolPredeterminadoId FK
+    nvarchar Estado
+    datetime2 UltimaConexion
+    varchar UltimaIp
+  }
+  Rol {
+    int RolId PK
+    nvarchar Nombre
+    nvarchar Descripcion
+    nvarchar Estado
+  }
+  UsuarioRol {
+    int UsuarioId PK,FK
+    int RolId PK,FK
+  }
+  Modulo {
+    int ModuloId PK
+    nvarchar Nombre
+    int Orden
+  }
+  Opcion {
+    int OpcionId PK
+    int ModuloId FK
+    varchar Clave
+    nvarchar Nombre
+    int Orden
+  }
+  Accion {
+    int AccionId PK
+    varchar Clave "ver, crear, editar, eliminar, exportar, aprobar"
+  }
+  Funcion {
+    int FuncionId PK
+    int OpcionId FK
+    varchar Clave "mostrar, copiar, rotar..."
+    nvarchar Nombre
+  }
+  RolPermiso {
+    int RolId PK,FK
+    int OpcionId PK,FK
+    int AccionId PK,FK
+  }
+  RolFuncion {
+    int RolId PK,FK
+    int FuncionId PK,FK
+  }
+  Sesion {
+    bigint SesionId PK
+    int UsuarioId FK
+    int RolActivoId FK
+    varchar Ip
+    datetime2 Inicio
+    datetime2 Expira
+    bit Revocada
+  }
+  ParametroAcceso {
+    int ParametroId PK
+    varchar Clave
+    nvarchar Valor
+  }
+  Tema {
+    int TemaId PK
+    nvarchar Nombre
+    nvarchar VariablesJson
+    bit Activo
+  }
+  Auditoria {
+    bigint AuditoriaId PK
+    datetime2 Fecha
+    int UsuarioId FK
+    int RolId FK
+    int OpcionId FK
+    nvarchar Accion
+    varchar Ip
+    uniqueidentifier Correlacion
+    nvarchar DetalleJson
+  }
+  Notificacion {
+    bigint NotificacionId PK
+    int UsuarioId FK
+    varchar Tipo
+    nvarchar Texto
+    bit Leida
+    datetime2 Fecha
+  }
+  ColaTarea {
+    bigint TareaId PK
+    int UsuarioId FK
+    varchar Tipo "exportación, carga masiva"
+    varchar Estado "pendiente, en proceso, completado, error"
+    nvarchar ParametrosJson
+    nvarchar ResultadoBlob
+    datetime2 Creada
+    datetime2 Terminada
+  }

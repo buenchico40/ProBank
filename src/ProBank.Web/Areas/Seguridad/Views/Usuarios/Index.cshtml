@@ -1,0 +1,100 @@
+@{ ViewData["Title"] = "Usuarios"; ViewData["Opcion"] = "usuarios"; }
+@section Scripts {
+<script>
+  // SEG-01, SEG-06 y SEG-07: usuarios con varios roles y uno predeterminado, clave temporal, desbloqueo y revocación de sesiones.
+  pb.listo.then(() => {
+    const $c = $("#content"), url = (a, q) => "/Seguridad/Usuarios/" + a + (q ? "?" + q : "");
+    const estado = u => u.estado === "Activo" && u.bloqueado ? "Bloqueado" : u.estado === "Activo" && u.debeCambiarClave ? "Clave temporal" : u.estado;
+    let lista = null, roles = [];
+
+    function listado() {
+      $c.empty();
+      lista = pb.ui.grid({
+        $c, modulo: "Seguridad", titulo: "Usuarios", opcion: "usuarios", clave: "token",
+        cargar: () => pb.get(url("Datos")),
+        columnas: [
+          { campo: "usuario", titulo: "Usuario" }, { campo: "nombre", titulo: "Nombre" },
+          { campo: "roles", titulo: "Roles", valor: u => u.roles.join(", ") },
+          { campo: "estado", titulo: "Estado", pill: true, valor: estado },
+          { campo: "ultimaConexion", titulo: "Última conexión", formato: "fechaHora" },
+          { campo: "rolPredeterminado", titulo: "Rol predeterminado" }
+        ],
+        botones: [
+          { text: "Nuevo", icon: "add", type: "default", accion: "crear", onClick: () => ficha(null, "nuevo") },
+          { text: "Editar", icon: "edit", accion: "editar", fila: true, onClick: u => ficha(u, "edicion") }
+        ],
+        alAbrir: u => ficha(u, "consulta"),
+        detalle: ($e, u) => {
+          pb.ui.mdHead($e, [u.usuario, u.nombre, "Roles: " + u.roles.join(", "), "Predeterminado: " + (u.rolPredeterminado || "—"), "Correo: " + (u.correo || "—")], estado(u));
+          const $s = $("<div>").appendTo($e);
+          pb.get(url("Ingresos", "token=" + u.token)).then(r => r && pb.ui.mdGrid($s, "Últimas sesiones",
+            [["fecha", "Fecha y hora"], ["ip", "IP"], ["resultado", "Resultado"], ["detalle", "Detalle"]],
+            r.map(x => ({ fecha: pb.fechaHora(x.fecha), ip: x.ip, resultado: x.resultado, detalle: x.detalle })), "Aún no ha iniciado sesión."));
+          const acciones = [
+            { text: "Revocar sesiones", icon: "lock", fn: "revocar", onClick: () => revocar(u) },
+            { text: "Restablecer contraseña", icon: "key", fn: "clave", onClick: () => restablecer(u) },
+            { text: "Desbloquear", icon: "unlock", fn: "desbloquear", visible: u.bloqueado, onClick: () => desbloquear(u) }
+          ].filter(b => b.visible !== false && pb.can("usuarios", b.fn));
+          if (acciones.length) pb.ui.mdActions($e, acciones);
+        }
+      });
+    }
+
+    async function revocar(u) {
+      if (!await pb.ui.confirmar("Revocar sesiones", "¿Cerrar todas las sesiones abiertas de <b>" + pb.esc(u.usuario) + "</b>? Deberá ingresar de nuevo.", "Revocar sesiones", "danger", "lock")) return;
+      if (await pb.post(url("Revocar", "token=" + u.token)) !== undefined) pb.notify("Sesiones de " + u.usuario + " revocadas");
+    }
+    async function restablecer(u) {
+      if (!await pb.ui.confirmar("Restablecer contraseña", "Se generará una clave temporal para <b>" + pb.esc(u.usuario) + "</b> y se cerrarán sus sesiones. ¿Continuar?", "Restablecer", "default", "key")) return;
+      const r = await pb.post(url("RestablecerClave", "token=" + u.token));
+      if (r !== undefined) { pb.ui.mostrarClave(r.usuario, r.claveTemporal); lista.recargar(); }
+    }
+    async function desbloquear(u) {
+      if (await pb.post(url("Desbloquear", "token=" + u.token)) !== undefined) { pb.notify("Usuario " + u.usuario + " desbloqueado"); lista.recargar(); }
+    }
+
+    async function ficha(u, modo) {
+      if (!roles.length) roles = ((await pb.get(url("Roles"))) || []).filter(r => r.estado === "Activo").map(r => r.nombre);
+      const datos = u ? { usuario: u.usuario, nombre: u.nombre, correo: u.correo, roles: u.roles.slice(), rolPredeterminado: u.rolPredeterminado, estado: u.estado, ultimaConexion: pb.fechaHora(u.ultimaConexion) }
+                      : { usuario: "", nombre: "", correo: "", roles: [], rolPredeterminado: null, estado: "Activo", ultimaConexion: "—" };
+      let form;
+      form = pb.ui.detalle({
+        $c, modulo: "Seguridad", titulo: "Usuarios", modo, nombre: u && u.usuario, token: u && u.token, datos,
+        soloLectura: modo === "consulta" && !pb.can("usuarios", "editar"),
+        items: ro => [
+          { dataField: "usuario", label: { text: "Usuario" }, isRequired: !ro, editorOptions: { readOnly: ro || modo !== "nuevo", maxLength: 60 },
+            helpText: modo === "nuevo" ? "Minúsculas: letras, números, punto, guion o guion bajo" : "" },
+          { dataField: "nombre", label: { text: "Nombre" }, isRequired: !ro, editorOptions: { maxLength: 150 } },
+          { dataField: "correo", label: { text: "Correo" }, editorOptions: { maxLength: 256 }, validationRules: [{ type: "email", message: "Correo no válido" }] },
+          { dataField: "roles", label: { text: "Roles" }, isRequired: !ro, editorType: "dxTagBox",
+            editorOptions: { items: roles, showSelectionControls: true, applyValueMode: "instantly", searchEnabled: true, placeholder: "Seleccione uno o varios",
+              onValueChanged: e => { const sb = form && form.getEditor("rolPredeterminado"); if (!sb) return; sb.option("items", e.value || []); if ((e.value || []).indexOf(datos.rolPredeterminado) < 0) sb.option("value", (e.value || [])[0] || null); } } },
+          { dataField: "rolPredeterminado", label: { text: "Rol predeterminado (al iniciar sesión)" }, editorType: "dxSelectBox", editorOptions: { items: datos.roles } },
+          { dataField: "estado", label: { text: "Estado" }, editorType: "dxSelectBox", editorOptions: { items: ["Activo", "Inactivo"], readOnly: ro || modo === "nuevo" } },
+          { dataField: "ultimaConexion", label: { text: "Última conexión (calculado)" }, editorOptions: { readOnly: true } }
+        ],
+        extra: ($x, ro) => {
+          if (modo === "nuevo") $('<div class="card pad">').appendTo($x).append($('<p class="muted" style="margin:0">')
+            .text("Al guardar se genera una clave temporal que se muestra una sola vez; el usuario debe cambiarla en su primer ingreso."));
+        },
+        alGuardar: async d => {
+          const cuerpo = { nombre: d.nombre, correo: d.correo || null, roles: d.roles, rolPredeterminado: d.rolPredeterminado };
+          if (modo === "nuevo") {
+            const r = await pb.post(url("Crear"), Object.assign({ usuario: d.usuario }, cuerpo));
+            if (r === undefined) return;
+            listado(); pb.notify("Usuario " + r.usuario + " creado"); pb.ui.mostrarClave(r.usuario, r.claveTemporal);
+          } else {
+            const r = await pb.post(url("Actualizar", "token=" + u.token), Object.assign({ estado: d.estado }, cuerpo));
+            if (r === undefined) return;
+            listado(); pb.notify("Registro " + u.usuario + " guardado correctamente");
+          }
+        },
+        alEditar: () => ficha(u, "edicion"),
+        alVolver: listado
+      });
+    }
+
+    listado();
+  });
+</script>
+}

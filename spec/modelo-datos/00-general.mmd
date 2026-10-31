@@ -1,0 +1,22 @@
+flowchart LR
+  SEG["<b>seg · Seguridad</b><br/>Usuario · Rol · Permiso · Sesión<br/>Notificación · Tema"]
+  AUD["<b>aud · Auditoría</b><br/>Auditoria (no editable)"]
+  Q["<b>q · Cola</b><br/>Tarea en segundo plano"]
+  COA["<b>coa · Coactivas</b><br/>Oficio · Coactiva · OrdenCoactiva<br/>CoactivaProducto · Movimiento"]
+  PRY["<b>pry · Portafolio</b><br/>Item · ItemResponsable · Hito · Tarea<br/>TareaAprobador · Aprobacion · Acuerdo · AccionRol"]
+  COM["<b>com · Compras y pagos TI</b><br/>Partida · Movimiento · Solicitud<br/>Renovacion · Pago"]
+  CUM["<b>cum · Cumplimiento</b><br/>Control · Evaluacion · Auditoria · Hallazgo"]
+  CRED["<b>cred · Credenciales</b><br/>GrupoAcceso · Certificado · CuentaTecnica · Secreto"]
+  MKT["<b>mkt · Marketing</b><br/>Promocion · Comunicado"]
+  RPT["<b>rpt · Consultas dinámicas y reportes</b><br/>Conexion · Consulta · Parametro · Ejecucion<br/>EjecucionEvento · Programacion · Reporte"]
+  VER["<b>ver · Versiones</b><br/>Aplicacion · Componente · Version<br/>Despliegue · Dependencia"]
+  COA --> SEG
+  PRY --> SEG
+  COM --> SEG
+  CUM --> SEG
+  CRED --> SEG
+  MKT --> SEG
+  RPT --> SEG
+  VER --> SEG
+  VER -->|incluye ítems| PRY
+  SEG --> AUD

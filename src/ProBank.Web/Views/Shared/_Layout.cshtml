@@ -1,0 +1,81 @@
+@inject Microsoft.Extensions.Configuration.IConfiguration Config
+@{
+    // Datos de la sesión para el menú y la cabecera; el resto (última conexión, IP, permisos) llega de /Seguridad/Perfil/Datos.
+    var roles = User.FindAll("roles").Select(c => c.Value).ToList();
+    var rolCookie = Context.Request.Cookies["probank_rol"];
+    var sesion = new
+    {
+        nombre = User.FindFirst("name")?.Value ?? User.Identity?.Name ?? "",
+        usuario = User.FindFirst("preferred_username")?.Value ?? "",
+        roles,
+        rolActivo = rolCookie is not null && roles.Contains(rolCookie) ? rolCookie : roles.FirstOrDefault() ?? "",
+        cambiarClave = User.HasClaim("cambiar_clave", "1"),
+        modulo = ViewData["Opcion"] as string ?? "",
+    };
+}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>@ViewData["Title"] · ProBank</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="https://cdn3.devexpress.com/jslib/25.2.10/css/dx.fluent.blue.light.compact.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/devexpress-gantt@4.1.69/dist/dx-gantt.min.css" />
+  <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  @* Igual que el prototipo: dxHtmlEditor necesita devextreme-quill y dxGantt necesita devexpress-gantt (antes de dx.all.js) *@
+  <script src="https://cdn.jsdelivr.net/npm/devextreme-quill@1.7.10/dist/dx-quill.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/devexpress-gantt@4.1.69/dist/dx-gantt.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+  <script src="https://cdn3.devexpress.com/jslib/25.2.10/js/dx.all.js"></script>
+  <script src="https://cdn3.devexpress.com/jslib/25.2.10/js/localization/dx.messages.es.js"></script>
+  <script>
+    DevExpress.localization.locale("es");
+    @* La clave va como literal JSON: con @(...) Razor la codificaría como HTML (+, =) y DevExtreme la rechazaría *@
+    DevExpress.config({ editorStylingMode: "outlined", licenseKey: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Config["DevExtreme:LicenseKey"] ?? "")) });
+  </script>
+  <script id="pb-sesion" type="application/json">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(sesion))</script>
+  <script src="~/js/probank.js" asp-append-version="true"></script>
+</head>
+<body>
+  @Html.AntiForgeryToken()
+  <div class="app" id="app">
+    <header class="hdr">
+      <div id="btnMenu"></div>
+      <a class="logo" href="/">ProBank</a>
+      <div class="conn">
+        <span id="connAnterior">Última conexión: —</span>
+        <span id="connActual">IP actual: —</span>
+      </div>
+      <button type="button" class="profile" id="btnProfile" aria-haspopup="dialog" aria-label="Perfil de usuario: @sesion.nombre">
+        <span class="avwrap"><svg class="avsvg" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="20" fill="#DCE3EC"/><circle cx="20" cy="16" r="7" fill="#8A97A8"/><path d="M6.5 34c2.6-6 7.6-9 13.5-9s10.9 3 13.5 9a20 20 0 0 1-27 0z" fill="#8A97A8"/></svg><span class="avdot" aria-hidden="true"></span></span>
+        <span class="ptxt"><b>@sesion.nombre</b><small>@sesion.usuario · @sesion.rolActivo</small></span>
+        <span class="dx-icon dx-icon-chevrondown" aria-hidden="true"></span>
+      </button>
+    </header>
+
+    <div class="body">
+      <nav id="nav" aria-label="Menú principal">
+        <a class="navitem" href="/" id="navHome"><span class="dx-icon dx-icon-home"></span><span>Inicio / Panel</span></a>
+        <div id="accordion"></div>
+        <p class="note">Opciones visibles según el rol configurado en Seguridad.</p>
+      </nav>
+      <main>
+        <div id="content" class="stack">@RenderBody()</div>
+      </main>
+    </div>
+
+    <footer class="ftr">
+      <span>Hora actual: <span id="clock"></span></span>
+      <span>Última acción: <span id="lastAction">—</span></span>
+      <span class="r">ProBank · rol activo @sesion.rolActivo</span>
+    </footer>
+  </div>
+  <form method="post" action="/Cuenta/Salir" id="frmSalir" hidden>@Html.AntiForgeryToken()</form>
+  @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

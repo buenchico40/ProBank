@@ -1,0 +1,89 @@
+erDiagram
+  Oficio ||--o{ Coactiva : "origen (bloqueo)"
+  Entidad ||--o{ Coactiva : emite
+  Cliente ||--o{ Coactiva : "contra"
+  Cliente ||--o{ ProductoCliente : posee
+  Coactiva ||--o{ Bloqueo : "se cobra con"
+  ProductoCliente ||--o{ Bloqueo : bloqueado
+  Oficio ||--o{ OrdenCoactiva : "trae"
+  Coactiva ||--o{ OrdenCoactiva : "orden sobre"
+  Bloqueo ||--o{ Movimiento : registra
+  OrdenCoactiva ||--o{ Movimiento : "se ejecuta en"
+  CargaMasiva ||--o{ Coactiva : "registra en lote"
+  Oficio {
+    int OficioId PK
+    uniqueidentifier Token
+    nvarchar Numero
+    date FechaRecepcion
+    nvarchar ContenidoHtml "editor enriquecido"
+    nvarchar DocumentoBlob "documento adjunto"
+    varchar Estado "pendiente, en curso, atendido, anulado"
+    int UsuarioRegistroId FK "seg.Usuario"
+  }
+  Entidad {
+    int EntidadId PK
+    varchar Ruc
+    nvarchar Nombre
+  }
+  Cliente {
+    int ClienteId PK
+    varchar Identificacion
+    nvarchar Nombre
+    varchar TipoPersona "natural o empresa"
+  }
+  ProductoCliente {
+    int ProductoId PK
+    int ClienteId FK
+    varchar Tipo "ahorros, corriente, plazo fijo..."
+    varchar Numero
+  }
+  Coactiva {
+    int CoactivaId PK
+    uniqueidentifier Token
+    int OficioId FK
+    int EntidadId FK
+    int ClienteId FK
+    int CargaId FK "null si es manual"
+    nvarchar NumeroProceso
+    decimal Monto
+    varchar Cobertura "total, parcial, sin bloqueo"
+    varchar Estado
+  }
+  Bloqueo {
+    int BloqueoId PK
+    int CoactivaId FK
+    int ProductoId FK
+    decimal MontoBloqueado
+    decimal MontoLevantado
+    decimal MontoTransferido
+    date Fecha
+    varchar Estado "bloqueado, parcial, levantado, transferido"
+  }
+  OrdenCoactiva {
+    int OrdenId PK
+    int OficioId FK
+    int CoactivaId FK
+    varchar TipoOrden "bloqueo, levantamiento, transferencia"
+    decimal MontoOrdenado "null = total"
+    varchar Estado "pendiente, parcial, ejecutada"
+  }
+  Movimiento {
+    bigint MovimientoId PK
+    int BloqueoId FK
+    int OrdenId FK "orden de la coactiva en el oficio"
+    varchar Tipo "bloqueo, levantamiento, transferencia"
+    decimal Monto
+    date Fecha
+    varchar FormaPago "transferencia o cheque"
+    nvarchar CuentaDestino "cuenta de la entidad"
+    nvarchar Comprobante
+    int UsuarioId FK "seg.Usuario"
+  }
+  CargaMasiva {
+    int CargaId PK
+    nvarchar ArchivoBlob
+    int Filas
+    int Errores
+    varchar Estado
+    bigint ColaTareaId FK "seg.ColaTarea"
+  }

@@ -1,0 +1,59 @@
+erDiagram
+  Item ||--o{ ItemResponsable : "uno o varios"
+  Item ||--o{ Hito : "hitos opcionales"
+  Item ||--o{ Tarea : tiene
+  Hito ||--o{ Tarea : agrupa
+  Tarea ||--o{ TareaAprobador : "ninguno o varios"
+  Tarea ||--o{ Aprobacion : decisiones
+  Item ||--o{ Acuerdo : "revisión semanal"
+  Item {
+    int ItemId PK
+    uniqueidentifier Token
+    varchar Tipo "Proyecto, Mejora, Bug"
+    varchar Codigo
+    nvarchar Titulo
+    varchar Estado
+  }
+  ItemResponsable {
+    int ItemId PK,FK
+    int UsuarioId PK,FK
+  }
+  Hito {
+    int HitoId PK
+    int ItemId FK
+    nvarchar Nombre
+    int Orden
+  }
+  Tarea {
+    int TareaId PK
+    uniqueidentifier Token
+    int ItemId FK
+    int HitoId FK "null"
+    varchar Area
+    int TecnicoId FK "cualquier área"
+    nvarchar Titulo
+    int Orden
+    date FechaTerminacion
+    varchar Estado "Pendiente, EnRevision, EnCurso, Completada"
+  }
+  TareaAprobador {
+    int TareaId PK,FK
+    int UsuarioId PK,FK
+  }
+  Aprobacion {
+    int AprobacionId PK
+    int TareaId FK
+    int AprobadorId FK
+    varchar Decision "Aprobada, Rechazada"
+    nvarchar Comentario "obligatorio al rechazar"
+    datetime2 Fecha
+  }
+  Acuerdo {
+    int AcuerdoId PK
+    int ItemId FK
+    date FechaRevision
+    nvarchar Descripcion
+    int ResponsableId FK
+    date FechaCumplimiento
+    varchar Estado
+  }

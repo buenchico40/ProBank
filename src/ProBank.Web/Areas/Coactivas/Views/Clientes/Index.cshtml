@@ -1,0 +1,43 @@
+@{ ViewData["Title"] = "Coactivas por cliente"; ViewData["Opcion"] = "clientes"; }
+@section Scripts {
+<script>
+  // Vista por cliente: todas sus coactivas con sus oficios y sus productos (lo bloqueado y lo disponible).
+  pb.listo.then(() => {
+    pb.ui.grid({
+      $c: $("#content"), modulo: "Coactivas", titulo: "Coactivas por cliente", opcion: "clientes", clave: "identificacion", expandir: true,
+      cargar: () => pb.get("/Coactivas/Clientes/Datos"),
+      columnas: [
+        { campo: "cliente", titulo: "Cliente / empresa" }, { campo: "identificacion", titulo: "Identificación" },
+        { campo: "coactivas", titulo: "Coactivas" }, { campo: "oficios", titulo: "Oficios" }, { campo: "entidades", titulo: "Entidades" },
+        { campo: "montoTotal", titulo: "Monto total", formato: "dinero" }, { campo: "bloqueado", titulo: "Bloqueado", formato: "dinero" },
+        { campo: "cobertura", titulo: "Cobertura", pill: true }
+      ],
+      detalle: async ($e, r) => {
+        pb.ui.mdHead($e, [r.cliente, r.tipoIdentificacion + " " + r.identificacion, r.coactivas + " coactivas en " + r.oficios + " oficios", r.entidades + " entidades",
+          "Total " + pb.dinero(r.montoTotal), "Bloqueado " + pb.dinero(r.bloqueado)], r.cobertura);
+        const [cs, ps] = await Promise.all([pb.get("/Coactivas/Coactivas/Datos?identificacion=" + encodeURIComponent(r.identificacion)),
+                                           pb.get("/Coactivas/Clientes/Productos?identificacion=" + encodeURIComponent(r.identificacion))]);
+        if (cs) {
+          $e.append($('<div class="mdtitle">').text("Coactivas y sus oficios"));
+          $("<div>").appendTo($e).dxDataGrid({
+            dataSource: cs.sort((a, b) => a.oficio < b.oficio ? -1 : a.oficio > b.oficio ? 1 : 0), showBorders: true, showRowLines: true, wordWrapEnabled: true, paging: { enabled: false },
+            columns: [
+              { dataField: "oficio", caption: "Oficio", cellTemplate: ($x, i) => $('<a class="lnk">').attr("href", "/Coactivas/Oficios?abrir=" + i.data.oficioToken).text(i.value).appendTo($x) },
+              { dataField: "oficioRecibido", caption: "Recepción", calculateCellValue: d => pb.fecha(d.oficioRecibido) },
+              { dataField: "numeroProceso", caption: "N.º de proceso", cellTemplate: ($x, i) => $('<a class="lnk">').attr("href", "/Coactivas/Coactivas?abrir=" + i.data.token).text(i.value).appendTo($x) },
+              { dataField: "entidad", caption: "Entidad" },
+              { dataField: "monto", caption: "Monto", alignment: "right", calculateCellValue: d => pb.dinero(d.monto) },
+              { dataField: "bloqueado", caption: "Bloqueado", alignment: "right", calculateCellValue: d => pb.dinero(d.bloqueado) },
+              { dataField: "cobertura", caption: "Cobertura", cellTemplate: ($x, i) => $("<span>").addClass(pb.pillCls(i.value) || "pill pill-b").text(i.value).appendTo($x) },
+              { dataField: "estado", caption: "Estado", cellTemplate: ($x, i) => $("<span>").addClass(pb.pillCls(i.value) || "pill pill-b").text(i.value).appendTo($x) }
+            ]
+          });
+        }
+        if (ps) pb.ui.mdGrid($e, "Productos del cliente", [["pr", "Producto"], ["cu", "Cuenta"], ["s", "Saldo referencial", "right"], ["b", "Bloqueado por coactivas", "right"], ["d", "Disponible", "right"]],
+          ps.map(p => ({ pr: p.tipo, cu: p.numero, s: pb.dinero(p.saldoReferencial), b: p.bloqueado > 0 ? pb.dinero(p.bloqueado) : "—", d: pb.dinero(Math.max(0, p.saldoReferencial - p.bloqueado)) })), "Sin productos registrados.");
+        pb.ui.mdNote($e, "Haga clic en el oficio o en el proceso para abrir su detalle; los bloqueos se registran desde la coactiva.");
+      }
+    });
+  });
+</script>
+}

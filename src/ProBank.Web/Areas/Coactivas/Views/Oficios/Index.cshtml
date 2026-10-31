@@ -1,0 +1,126 @@
+@{ ViewData["Title"] = "Oficios"; ViewData["Opcion"] = "oficios"; }
+@section Scripts {
+<script src="~/js/coactivas.js" asp-append-version="true"></script>
+<script>
+  // COA-02 y COA-04: oficios con varias coactivas de varios clientes y entidades, órdenes mezcladas y carga masiva.
+  pb.listo.then(() => {
+    const $c = $("#content"), url = (a, q) => "/Coactivas/Oficios/" + a + (q ? "?" + q : "");
+    let lista = null;
+
+    function listado() {
+      $c.empty();
+      lista = pb.ui.grid({
+        $c, modulo: "Coactivas", titulo: "Oficios", opcion: "oficios", clave: "token",
+        cargar: () => pb.get(url("Datos")),
+        columnas: [
+          { campo: "numero", titulo: "N.º de oficio" }, { campo: "recibido", titulo: "Fecha de recepción", formato: "fecha" },
+          { campo: "remitidoPor", titulo: "Remitido por" }, { campo: "ordenes", titulo: "Coactivas" },
+          { campo: "resumen", titulo: "Órdenes", valor: coa.ordenesResumen }, { campo: "entidades", titulo: "Entidades" },
+          { campo: "montoCoactivas", titulo: "Monto de las coactivas", formato: "dinero" }, { campo: "ejecutado", titulo: "Monto ejecutado", formato: "dinero" },
+          { campo: "estado", titulo: "Estado", pill: true }
+        ],
+        anulada: o => o.estado === "Anulado",
+        botones: [
+          { text: "Nuevo", icon: "add", type: "default", accion: "crear", onClick: () => ficha(null, "nuevo") },
+          { text: "Editar", icon: "edit", accion: "editar", fila: true, onClick: o => ficha(o, "edicion") },
+          { text: "Anular", icon: "clear", accion: "eliminar", fila: true, onClick: anular },
+          { text: "Carga masiva (Excel)", icon: "import", accion: "carga", onClick: () => coa.cargaPopup(() => lista.recargar()) },
+          { text: "Entidades", icon: "group", accion: "editar", onClick: coa.entidadesPopup }
+        ],
+        alAbrir: o => ficha(o, "consulta"),
+        detalle: async ($e, o) => {
+          pb.ui.mdHead($e, [o.numero, "Recibido " + pb.fecha(o.recibido), o.remitidoPor, o.ordenes + " coactivas de " + o.entidades + " entidades", "Órdenes: " + coa.ordenesResumen(o), "Ejecutado " + pb.dinero(o.ejecutado)], o.estado);
+          const $s = $("<div>").appendTo($e);
+          const d = await pb.get(url("Detalle", "token=" + o.token));
+          if (d) pb.ui.mdGrid($s, "Coactivas del oficio", [["o", "Orden"], ["p", "N.º de proceso"], ["e", "Entidad"], ["c", "Cliente / empresa"], ["ord", "Monto ordenado", "right"], ["x", "Ejecutado", "right"], ["st", "Estado"]],
+            d.coactivas.map(q => ({ o: coa.ORD[q.tipo].largo, p: q.numeroProceso, e: q.entidad, c: q.cliente, ord: ordenado(q), x: q.ejecutado > 0 ? pb.dinero(q.ejecutado) : "—", st: q.estado })), "El oficio aún no tiene coactivas.");
+          pb.ui.mdActions($e, [{ text: "Abrir oficio y sus coactivas", icon: "detailslayout", type: "default", onClick: () => ficha(o, "consulta") }]);
+        }
+      });
+    }
+    const ordenado = q => q.tipo === "Bloqueo" ? pb.dinero(q.montoCoactiva) : q.montoOrdenado ? pb.dinero(q.montoOrdenado) : "Total";
+
+    async function anular(o) {
+      if (o.estado === "Anulado") return pb.notify("El registro " + o.numero + " ya está anulado", "warning");
+      if (!await pb.ui.confirmar("Anular registro", "¿Desea anular el registro <b>" + pb.esc(o.numero) + "</b>? El registro se conserva con estado Anulado para auditoría; sus coactivas se anulan y los bloqueos vigentes se liberan.", "Anular", "danger", "clear")) return;
+      const r = await pb.post(url("Anular", "token=" + o.token));
+      if (r !== undefined) { pb.notify("Registro " + o.numero + " anulado · " + r); lista.recargar(); }
+    }
+
+    async function ficha(o, modo) {
+      const d = o ? await pb.get(url("Detalle", "token=" + o.token)) : null;
+      if (o && !d) return;
+      const anulado = d && d.estado === "Anulado";
+      if (modo === "edicion" && anulado) return pb.notify("El oficio está anulado", "warning");
+      const datos = d ? { numero: d.numero, recibido: d.recibido, remitidoPor: d.remitidoPor, coactivas: String(d.ordenes), entidades: String(d.entidades),
+                          monto: pb.dinero(d.montoCoactivas), ejecutado: pb.dinero(d.ejecutado), estado: d.estado, registrado: d.registradoPor + " · " + pb.fechaHora(d.fechaRegistro) }
+                      : { numero: "", recibido: new Date(), remitidoPor: "", coactivas: "—", entidades: "—", monto: "—", ejecutado: "—", estado: "Pendiente", registrado: pb.sesion.nombre };
+      let editor = null;
+      pb.ui.detalle({
+        $c, modulo: "Coactivas", titulo: "Oficios", modo, nombre: d && d.numero, token: d && d.token, datos,
+        soloLectura: modo === "consulta" && (anulado || !pb.can("oficios", "editar")),
+        items: ro => [
+          { dataField: "numero", label: { text: "N.º de oficio" }, isRequired: !ro, editorOptions: { maxLength: 30 } },
+          { dataField: "recibido", label: { text: "Fecha de recepción" }, isRequired: !ro, editorType: "dxDateBox", editorOptions: { displayFormat: "dd/MM/yyyy", max: new Date() } },
+          { dataField: "remitidoPor", label: { text: "Remitido por" }, isRequired: !ro, editorOptions: { maxLength: 150 } },
+          { dataField: "coactivas", label: { text: "Coactivas (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "entidades", label: { text: "Entidades (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "monto", label: { text: "Monto de las coactivas (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "ejecutado", label: { text: "Monto ejecutado (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "estado", label: { text: "Estado (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "registrado", label: { text: "Registrado por" }, editorOptions: { readOnly: true } }
+        ],
+        extra: ($x, ro) => {
+          const $rc = $('<div class="card pad stack">').appendTo($x);
+          $rc.append('<span class="lbl" id="richLbl">Contenido del oficio</span>');
+          editor = $("<div>").appendTo($rc).dxHtmlEditor({ value: d ? d.contenidoHtml || "" : "", readOnly: ro, height: 160, elementAttr: { "aria-labelledby": "richLbl" },
+            toolbar: { multiline: true, items: ["bold", "italic", "underline", "separator", "bulletList", "orderedList", "separator", "link"] } }).dxHtmlEditor("instance");
+          coactivasDelOficio($x, d);
+        },
+        alGuardar: async f => {
+          const cuerpo = { numero: f.numero, recibido: iso(f.recibido), remitidoPor: f.remitidoPor, contenidoHtml: editor.option("value") || null };
+          const t = await pb.post(url("Guardar", d ? "token=" + d.token : ""), cuerpo);
+          if (t === undefined) return;
+          pb.notify("Registro " + f.numero + " guardado correctamente");
+          if (modo === "nuevo") ficha({ token: t }, "consulta"); else listado();
+        },
+        alEditar: () => ficha(o, "edicion"),
+        alVolver: listado
+      });
+    }
+    const iso = v => { const x = v instanceof Date ? v : new Date(v); return x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0") + "-" + String(x.getDate()).padStart(2, "0"); };
+
+    // renderOficioCoactivas del prototipo: cada fila es una coactiva con su orden; al desplegarla se ejecuta la orden en las cuentas del cliente
+    function coactivasDelOficio($x, d) {
+      const $k = $('<div class="card pad stack">').appendTo($x);
+      $k.append('<h2>Coactivas del oficio</h2><p class="muted">Un oficio trae varias coactivas de distintos clientes y entidades. Cada coactiva viene con su propia orden: bloqueo de fondos (coactiva nueva), levantamiento del bloqueo o transferencia de los fondos a la entidad (sobre una coactiva ya bloqueada). Despliegue la fila para ejecutar la orden en las cuentas del cliente.</p>');
+      if (!d) { $k.append('<p class="muted"><b>Guarde el oficio</b> para agregar sus coactivas o cargarlas desde Excel.</p>'); return; }
+      const anul = d.estado === "Anulado";
+      const reabrir = () => ficha({ token: d.token }, "consulta");
+      const items = [];
+      if (pb.can("oficios", "editar")) items.push({ location: "before", widget: "dxButton", options: { text: "Agregar coactiva", icon: "add", type: "default", stylingMode: "contained", disabled: anul, onClick: () => coa.ordenPopup(d, reabrir) } });
+      if (pb.can("oficios", "carga")) items.push({ location: "before", locateInMenu: "auto", widget: "dxButton", showText: "always", options: { text: "Carga masiva (Excel)", icon: "import", stylingMode: "contained", disabled: anul, onClick: () => coa.cargaPopup(reabrir) } });
+      if (items.length) $('<div class="gridbar">').appendTo($k).dxToolbar({ multiline: false, items });
+      const ds = d.coactivas.map(q => ({ id: q.ordenId, _q: q, o: q.tipo, p: q.numeroProceso, e: q.entidad, c: q.cliente, idn: q.identificacion, m: pb.dinero(q.montoCoactiva), ord: ordenado(q), v: pb.dinero(q.bloqueado), x: q.ejecutado > 0 ? pb.dinero(q.ejecutado) : "—", st: q.estado }));
+      const cols = [["o", "Orden"], ["p", "N.º de proceso"], ["e", "Entidad"], ["c", "Cliente / empresa"], ["idn", "Identificación"], ["m", "Monto de la coactiva", "right"], ["ord", "Monto ordenado", "right"], ["v", "Bloqueado vigente", "right"], ["x", "Ejecutado", "right"], ["st", "Estado"]];
+      $("<div>").appendTo($k).dxDataGrid({
+        dataSource: ds, keyExpr: "id", showBorders: false, showRowLines: true, columnAutoWidth: false, wordWrapEnabled: true, hoverStateEnabled: true, columnHidingEnabled: pb.isPhone(),
+        paging: { enabled: false }, noDataText: "El oficio aún no tiene coactivas.",
+        columns: cols.map(k => ({ dataField: k[0], caption: k[1], alignment: k[2] || "left", minWidth: 84, cellTemplate: ($el, info) => {
+          const v = info.value;
+          if (k[0] === "o") { $("<span>").addClass(coa.ORD[v].pill).text(coa.ORD[v].corto).appendTo($el); return; }
+          if (k[0] === "p") { $('<a class="lnk">').attr("href", "/Coactivas/Coactivas?abrir=" + info.data._q.coactivaToken).text(v).appendTo($el); return; }
+          const pc = k[0] === "st" ? pb.pillCls(v) : ""; if (pc) $("<span>").addClass(pc).text(v).appendTo($el); else $el.text(v);
+        } })),
+        masterDetail: { enabled: true, template: (el, info) => coa.panel($('<div class="md">').appendTo(el), info.data._q.coactivaToken, { oficio: d.numero, tipo: info.data._q.tipo }) }
+      });
+      const act = d.coactivas.filter(q => q.estado !== "Anulado");
+      const cuenta = t => act.filter(q => q.tipo === t).length;
+      $k.append($('<div class="mdfoot">').text(d.coactivas.length + " coactivas · " + [["Bloqueo", "bloqueo"], ["Levantamiento", "levantamiento"], ["Transferencia", "transferencia"]].filter(x => cuenta(x[0])).map(x => cuenta(x[0]) + " " + x[1]).join(" · ") + " · Ejecutado " + pb.dinero(d.ejecutado)));
+    }
+
+    const abrir = new URLSearchParams(location.search).get("abrir");
+    if (abrir) ficha({ token: abrir }, "consulta"); else listado();
+  });
+</script>
+}

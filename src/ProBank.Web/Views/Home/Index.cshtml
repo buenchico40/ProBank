@@ -1,0 +1,95 @@
+@{ ViewData["Title"] = "Panel"; }
+@section Scripts {
+<script>
+  // Inicio / Panel (renderInicio del prototipo): indicadores, gráficos, imágenes promocionales y comunicados vigentes del rol activo.
+  pb.listo.then(async () => {
+    const $content = $("#content");
+    $content.append('<nav class="crumbs" aria-label="Migas de pan"><b>Inicio / Panel</b></nav>');
+    $content.append($("<h1>").text("Panel · " + pb.sesion.rolActivo));
+    if (!pb.can("inicio", "ver")) { $('<div class="card pad">').appendTo($content).append('<p class="muted" style="margin:0">Su rol activo no tiene acceso al Panel. Cambie de rol desde su perfil o use el menú.</p>'); return; }
+    const d = await pb.get("/Home/Panel");
+    if (!d) return;
+    const FONT = "Inter, Roboto, system-ui, sans-serif";
+    const ac = getComputedStyle(document.documentElement).getPropertyValue("--ac").trim() || "#0B5CAD";
+    const ir = k => { const it = pb.menu.flatMap(g => g.items).find(i => i[0] === k); window.location.href = it && it[2] ? it[2] : "/Home/Opcion?clave=" + k; };
+
+    const kpis = [["Coactivas activas", d.coactivasActivas, "coactivas"], ["Aprobaciones pendientes", d.aprobacionesPendientes, "aprobaciones"],
+                  ["Tareas asignadas", d.tareasAsignadas, "tareas"], ["Renovaciones por vencer", d.renovacionesPorVencer, "renovaciones"]];
+    const $k = $('<div class="kpis">').appendTo($content);
+    kpis.forEach(k => {
+      const $c = $('<div class="card kpi">').append($("<span>").text(k[0])).append($("<strong>").text(k[1]));
+      if (pb.can(k[2], "ver")) $('<button type="button" class="lnk">Ver detalle</button>').on("click", () => ir(k[2])).appendTo($c);
+      $k.append($c);
+    });
+
+    const $ch = $('<div class="charts">').appendTo($content);
+    const chart = (title, ds) => {
+      const $c = $('<div class="card">').append($("<h2>").text(title)).appendTo($ch);
+      $("<div>").appendTo($c).dxChart({
+        dataSource: ds.map(x => ({ label: x.etiqueta, value: x.valor })), size: { height: 190 }, palette: [ac], legend: { visible: false },
+        commonSeriesSettings: { argumentField: "label", valueField: "value", type: "bar", barPadding: 0.35, cornerRadius: 3, label: { visible: true, backgroundColor: "transparent", font: { family: FONT, color: "#1B2430", weight: 600 } } },
+        series: [{ name: title, color: ac }],
+        valueAxis: { allowDecimals: false, valueMarginsEnabled: true, maxValueMargin: 0.18, tickInterval: 1, grid: { color: "#E6EAF0" }, label: { font: { family: FONT, color: "#46505E" } } },
+        argumentAxis: { label: { font: { family: FONT, color: "#46505E" }, overlappingBehavior: "stagger" } },
+        tooltip: { enabled: true, font: { family: FONT }, customizeTooltip: a => ({ text: a.argumentText + ": " + a.valueText }) }
+      });
+    };
+    chart("Cobertura de coactivas", d.cobertura);
+    chart("Ítems de TI por tipo", d.items);
+
+    // Texto plano y HTML saneado del contenido enriquecido (no se ejecutan scripts ni atributos on*)
+    const texto = html => (new DOMParser().parseFromString(html || "", "text/html").body.textContent || "").trim();
+    const resumen = html => { const t = texto(html); return t.length > 180 ? t.substring(0, 177) + "…" : t; };
+    const sanear = html => {
+      const doc = new DOMParser().parseFromString(html || "", "text/html");
+      doc.querySelectorAll("script,style,iframe,object,embed,link,meta,form").forEach(n => n.remove());
+      doc.querySelectorAll("*").forEach(n => [...n.attributes].forEach(a => { if (/^on/i.test(a.name) || (/^(href|src)$/i.test(a.name) && /^\s*javascript:/i.test(a.value))) n.removeAttribute(a.name); }));
+      return doc.body.innerHTML;
+    };
+    const COMTYPE = { "Mantenimiento": { k: "mant", i: "preferences" }, "Aviso": { k: "aviso", i: "info" }, "Noticia": { k: "noti", i: "message" }, "Campaña": { k: "camp", i: "favorites" } };
+    const vig = r => "Vigente del " + pb.fecha(r.desde) + (r.hasta ? " al " + pb.fecha(r.hasta) : "");
+
+    const $row = $('<div class="mkt-row">').appendTo($content);
+    // Carrusel de imágenes promocionales vigentes
+    const $pc = $('<div class="card mkt-promos">').appendTo($row);
+    if (d.promociones.length) $("<div>").appendTo($pc).dxGallery({ dataSource: d.promociones, height: pb.isPhone() ? 170 : "100%", loop: true, slideshowDelay: 6000, showNavButtons: false, swipeEnabled: true, showIndicator: d.promociones.length > 1, width: "100%",
+      itemTemplate: r => $('<div class="promo-slide">').append($("<small>").text("Campaña" + (r.hasta ? " · vigente hasta el " + pb.fecha(r.hasta) : ""))).append($("<strong>").text(r.titulo)).append($("<span>").text("Imagen administrada por Marketing")) });
+    else $pc.append('<p class="muted" style="margin:16px">No hay imágenes promocionales vigentes.</p>');
+
+    // Comunicados vigentes para el rol activo: el destacado arriba, los demás como tarjetas
+    const coms = d.comunicados;
+    const $cc = $('<div class="card mkt-coms">').appendTo($row);
+    $('<div class="mkt-hd">').appendTo($cc).append($("<h2>").text("Comunicados")).append($('<span class="muted">').text(coms.length + " vigentes"));
+    if (!coms.length) $cc.append('<p class="muted">No hay comunicados vigentes para su rol.</p>');
+    const hero = coms.find(r => r.destacado), rest = coms.filter(r => r !== hero);
+    if (hero) {
+      const ty = COMTYPE[hero.tipo] || COMTYPE.Aviso;
+      const $h = $('<button type="button" class="com-hero">').addClass("t-" + ty.k).on("click", () => comPopup(hero)).appendTo($cc);
+      $h.append($('<div class="com-top">').append($('<span class="com-ico dx-icon dx-icon-' + ty.i + '">')).append($('<span class="com-type">').text(hero.tipo)).append($('<span class="com-flag">').text("Destacado")));
+      $h.append($('<strong class="com-title">').text(hero.titulo)).append($('<span class="com-sum">').text(resumen(hero.contenidoHtml)));
+      $h.append($('<span class="com-meta">').text(vig(hero) + " · Leer comunicado"));
+    }
+    const $l = $('<div class="com-list">').appendTo($cc);
+    rest.slice(0, 4).forEach(r => {
+      const ty = COMTYPE[r.tipo] || COMTYPE.Aviso;
+      const $it = $('<button type="button" class="com-card">').addClass("t-" + ty.k).on("click", () => comPopup(r)).appendTo($l);
+      $it.append($('<span class="com-ico dx-icon dx-icon-' + ty.i + '">'));
+      $('<span class="com-body">').appendTo($it).append($('<span class="com-type">').text(r.tipo)).append($('<strong class="com-title">').text(r.titulo))
+        .append($('<span class="com-sum">').text(resumen(r.contenidoHtml))).append($('<span class="com-meta">').text(r.hasta ? "Hasta el " + pb.fecha(r.hasta) : vig(r)));
+    });
+    if (rest.length > 4) $cc.append($('<span class="muted">').text("y " + (rest.length - 4) + " más en Marketing › Comunicados"));
+
+    function comPopup(r) {
+      const ty = COMTYPE[r.tipo] || COMTYPE.Aviso;
+      pb.ui.openPopup(r.titulo, $f => {
+        const $w = $('<div class="com-read">').addClass("t-" + ty.k).appendTo($f);
+        $w.append($('<div class="com-top">').append($('<span class="com-ico dx-icon dx-icon-' + ty.i + '">')).append($('<span class="com-type">').text(r.tipo)).append(r.destacado ? $('<span class="com-flag">').text("Destacado") : null));
+        const $m = $('<dl class="com-facts">').appendTo($w);
+        [["Vigencia", vig(r).replace("Vigente ", "")], ["Dirigido a", r.audiencia === "Todos" ? "Todo el personal" : r.audiencia], ["Publicado por", "Marketing"]].forEach(x => $m.append($("<dt>").text(x[0])).append($("<dd>").text(x[1])));
+        $('<section class="com-sec">').appendTo($w).html(sanear(r.contenidoHtml));
+        return null;
+      }, () => true, "Cerrar", 640);
+    }
+  });
+</script>
+}

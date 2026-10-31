@@ -1,0 +1,80 @@
+@{ ViewData["Title"] = "Acuerdos semanales"; ViewData["Opcion"] = "acuerdos"; }
+@section Scripts {
+<script src="~/js/portafolio.js" asp-append-version="true"></script>
+<script>
+  // PRY-08: acuerdos de la revisión semanal por ítem, con responsable y fecha de cumplimiento; vencen solos.
+  pb.listo.then(() => {
+    const $c = $("#content");
+    let lista = null, todos = [];
+
+    function listado() {
+      $c.empty();
+      lista = pb.ui.grid({
+        $c, modulo: "Portafolio", titulo: "Acuerdos semanales", opcion: "acuerdos", clave: "acuerdoId",
+        cargar: async () => { const r = await pb.get(pry.url("Acuerdos")); if (r) todos = r; return r; },
+        columnas: [
+          { campo: "codigo", titulo: "Acuerdo" }, { campo: "item", titulo: "Ítem" }, { campo: "fechaRevision", titulo: "Fecha de revisión", formato: "fecha" },
+          { campo: "descripcion", titulo: "Descripción del acuerdo" }, { campo: "responsable", titulo: "Responsable" },
+          { campo: "fechaCumplimiento", titulo: "Fecha de cumplimiento", formato: "fecha" }, { campo: "estado", titulo: "Estado", pill: true }
+        ],
+        botones: [
+          { text: "Nuevo", icon: "add", type: "default", accion: "crear", onClick: () => pry.acuerdoPopup(null, () => lista.recargar()) },
+          { text: "Editar", icon: "edit", accion: "editar", fila: true, onClick: a => ficha(a, "edicion") },
+          { text: "Eliminar", icon: "trash", accion: "eliminar", fila: true, onClick: eliminar },
+          { text: "Marcar cumplido", icon: "check", fila: true, onClick: cumplir }
+        ],
+        alAbrir: a => ficha(a, "consulta"),
+        detalle: ($e, a) => {
+          pb.ui.mdHead($e, [a.codigo, a.item + " · " + a.itemTitulo, "Revisión del " + pb.fecha(a.fechaRevision), "Responsable: " + a.responsable, "Cumplir hasta el " + pb.fecha(a.fechaCumplimiento)], a.estado);
+          if (a.temas) pb.ui.mdNote($e, "Temas tratados en la revisión: " + a.temas);
+          pb.ui.mdGrid($e, "Otros acuerdos de la misma revisión", [["c", "Acuerdo"], ["d", "Descripción"], ["re", "Responsable"], ["fc", "Cumplimiento"], ["s", "Estado"]],
+            todos.filter(x => x.acuerdoId !== a.acuerdoId && x.revisionId === a.revisionId).map(x => ({ c: x.codigo, d: x.descripcion, re: x.responsable, fc: pb.fecha(x.fechaCumplimiento), s: x.estado })),
+            "Es el único acuerdo de esa revisión.");
+          const acc = [{ text: "Marcar cumplido", icon: "check", type: "default", disabled: a.estado === "Cumplido", onClick: () => cumplir(a) }];
+          if (pb.can("acuerdos", "crear")) acc.push({ text: "Registrar acuerdos de otra revisión", icon: "comment", onClick: () => pry.acuerdoPopup(a.itemToken, () => lista.recargar()) });
+          pb.ui.mdActions($e, acc);
+        }
+      });
+    }
+
+    async function cumplir(a) {
+      if (a.estado === "Cumplido") return pb.notify("El acuerdo " + a.codigo + " ya está cumplido", "warning");
+      if (await pb.post(pry.url("CumplirAcuerdo", "id=" + a.acuerdoId)) !== undefined) { pb.notify("Acuerdo " + a.codigo + " marcado como cumplido"); lista.recargar(); }
+    }
+    async function eliminar(a) {
+      if (a.estado === "Cumplido") return pb.notify("Un acuerdo cumplido no se elimina", "warning");
+      if (!await pb.ui.confirmar("Eliminar registro", "¿Desea eliminar el registro <b>" + pb.esc(a.codigo) + "</b>? Esta acción no se puede deshacer.", "Eliminar", "danger", "trash")) return;
+      if (await pb.post(pry.url("EliminarAcuerdo", "id=" + a.acuerdoId)) !== undefined) { pb.notify("Registro " + a.codigo + " eliminado"); lista.recargar(); }
+    }
+
+    async function ficha(a, modo) {
+      if (modo === "edicion" && a.estado === "Cumplido") return pb.notify("El acuerdo ya está cumplido", "warning");
+      const users = await pry.usuarios();
+      const datos = { codigo: a.codigo, item: a.item + " · " + a.itemTitulo, revision: pb.fecha(a.fechaRevision), descripcion: a.descripcion, responsableId: a.responsableId,
+        fecha: pb.aFecha(a.fechaCumplimiento), estado: a.estado, cumplido: a.fechaCumplido ? pb.fecha(a.fechaCumplido) : "—" };
+      pb.ui.detalle({
+        $c, modulo: "Portafolio", titulo: "Acuerdos semanales", modo, nombre: a.codigo, datos,
+        soloLectura: modo === "consulta" && (!pb.can("acuerdos", "editar") || a.estado === "Cumplido"),
+        items: ro => [
+          { dataField: "codigo", label: { text: "Acuerdo" }, editorOptions: { readOnly: true } },
+          { dataField: "item", label: { text: "Ítem" }, editorOptions: { readOnly: true } },
+          { dataField: "revision", label: { text: "Fecha de revisión" }, editorOptions: { readOnly: true } },
+          { dataField: "descripcion", label: { text: "Descripción del acuerdo" }, isRequired: !ro, colSpan: 3, editorType: "dxTextArea", editorOptions: { height: 60, maxLength: 500 } },
+          { dataField: "responsableId", label: { text: "Responsable" }, isRequired: !ro, editorType: "dxSelectBox", editorOptions: { dataSource: users, valueExpr: "usuarioId", displayExpr: "nombre", searchEnabled: true } },
+          { dataField: "fecha", label: { text: "Fecha de cumplimiento" }, isRequired: !ro, editorType: "dxDateBox", editorOptions: { displayFormat: "dd/MM/yyyy" } },
+          { dataField: "estado", label: { text: "Estado (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "cumplido", label: { text: "Cumplido el" }, editorOptions: { readOnly: true } }
+        ],
+        alGuardar: async f => {
+          if (await pb.post(pry.url("ActualizarAcuerdo", "id=" + a.acuerdoId), { descripcion: f.descripcion, responsableId: f.responsableId, fechaCumplimiento: pry.iso(f.fecha) }) === undefined) return;
+          pb.notify("Registro " + a.codigo + " guardado correctamente"); listado();
+        },
+        alEditar: () => ficha(a, "edicion"),
+        alVolver: listado
+      });
+    }
+
+    listado();
+  });
+</script>
+}

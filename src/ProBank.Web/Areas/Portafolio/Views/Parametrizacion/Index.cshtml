@@ -1,0 +1,41 @@
+@{ ViewData["Title"] = "Parametrización"; ViewData["Opcion"] = "paramproy"; }
+@section Scripts {
+<script src="~/js/portafolio.js" asp-append-version="true"></script>
+<script>
+  // PRY-09: qué roles pueden ejecutar cada acción de Portafolio (además del permiso de la opción en Seguridad).
+  pb.listo.then(() => {
+    let lista = null, roles = [];
+    lista = pb.ui.grid({
+      $c: $("#content"), modulo: "Portafolio", titulo: "Parametrización", opcion: "paramproy", clave: "clave",
+      cargar: async () => { const r = await pb.get(pry.url("Parametrizacion")); if (!r) return r; roles = r.roles; return r.acciones; },
+      columnas: [
+        { campo: "nombre", titulo: "Acción" }, { campo: "roles", titulo: "Roles que pueden ejecutarla", valor: a => a.roles.join(", ") || "—" },
+        { campo: "estado", titulo: "Estado", pill: true }
+      ],
+      botones: [{ text: "Editar", icon: "edit", accion: "editar", fila: true, onClick: editar }],
+      detalle: ($e, a) => {
+        pb.ui.mdHead($e, [a.nombre], a.estado);
+        pb.ui.mdGrid($e, "Roles que pueden ejecutarla", [["g", "Rol"], ["d", "Descripción del rol"], ["u", "Usuarios con el rol", "right"], ["s", "Estado del rol"]],
+          a.roles.map(g => { const ro = roles.find(x => x.nombre === g); return { g, d: ro ? ro.descripcion : "Rol no encontrado en Seguridad", u: String(ro ? ro.usuarios : 0), s: ro ? ro.estado : "Inactivo" }; }),
+          "Ningún rol puede ejecutar esta acción.");
+        pb.ui.mdNote($e, "Los roles salen de Seguridad › Roles y permisos. Un usuario ejecuta la acción cuando su rol activo está en esta lista; el Administrador siempre puede.");
+        if (pb.can("paramproy", "editar")) pb.ui.mdActions($e, [{ text: "Agregar o quitar roles", icon: "group", type: "default", onClick: () => editar(a) }]);
+      }
+    });
+
+    function editar(a) {
+      const data = { roles: a.roles.slice() };
+      pb.ui.openPopup("Quién puede ejecutar · " + a.nombre, $f => $("<div>").appendTo($f).dxForm({ formData: data, labelLocation: "top", showColonAfterLabel: false, items: [
+        { dataField: "roles", label: { text: "Roles (de Seguridad › Roles y permisos)" }, editorType: "dxTagBox", isRequired: true,
+          editorOptions: { items: roles.filter(x => x.estado === "Activo").map(x => x.nombre), showSelectionControls: true, applyValueMode: "instantly", searchEnabled: true } },
+        { template: () => $('<p class="muted" style="margin:0">').text("Solo se listan los roles activos. El cambio aplica de inmediato a los usuarios cuyo rol activo esté en la lista.") }
+      ] }).dxForm("instance"), async f => {
+        if (!f.validate().isValid || !data.roles.length) { pb.notify("Seleccione al menos un rol", "warning"); return false; }
+        const r = await pb.post(pry.url("GuardarAccion", "accion=" + encodeURIComponent(a.clave)), { roles: data.roles });
+        if (r === undefined) return false;
+        pb.notify("«" + a.nombre + "» ahora la pueden ejecutar: " + r); lista.recargar();
+      }, "Guardar", 520);
+    }
+  });
+</script>
+}

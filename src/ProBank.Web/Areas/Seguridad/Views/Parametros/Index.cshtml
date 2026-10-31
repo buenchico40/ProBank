@@ -1,0 +1,36 @@
+@{ ViewData["Title"] = "Parámetros de acceso"; ViewData["Opcion"] = "params"; }
+@section Scripts {
+<script>
+  // Parámetros de acceso (renderParams del prototipo): valores editables y políticas fijas de la plataforma.
+  pb.listo.then(async () => {
+    const $c = $("#content");
+    pb.ui.head($c, "Seguridad", "Parámetros de acceso");
+    $c.append("<h1>Parámetros de acceso</h1>");
+    const params = await pb.get("/Seguridad/Parametros/Datos");
+    if (!params) return;
+    const ro = !pb.can("params", "editar"), valores = {};
+    const $p = $('<div class="card" style="padding:6px 18px">').appendTo($c);
+    params.forEach(x => {
+      valores[x.clave] = x.valor;
+      const $r = $('<div class="policy">').appendTo($p);
+      $r.append($('<div style="flex:1 1 360px">').append($("<strong>").text(x.nombre)).append($('<p class="muted">').text("Entre " + x.minimo + " y " + x.maximo + ".")));
+      $("<div>").appendTo($r).dxNumberBox({ value: x.valor, min: x.minimo, max: x.maximo, showSpinButtons: true, width: 140, readOnly: ro,
+        inputAttr: { "aria-label": x.nombre }, onValueChanged: e => { valores[x.clave] = e.value; } });
+    });
+    const POLITICAS = [
+      "Usuario y contraseña con PBKDF2-SHA512 (600 000 iteraciones) y sal por usuario",
+      "Contraseña de al menos 14 caracteres, sin el nombre de usuario; la temporal se cambia en el primer ingreso",
+      "Límite de 120 peticiones por minuto por usuario",
+      "Revocar la sesión si cambia la IP",
+      "La API solo acepta llamadas desde la Web (restricción de IP)"
+    ];
+    $c.append("<h2>Políticas de la plataforma</h2>");
+    const $q = $('<div class="card" style="padding:6px 18px">').appendTo($c);
+    POLITICAS.forEach(t => $q.append($('<div class="policy">').append($('<span style="flex:1 1 360px">').text(t)).append('<span class="pill pill-g">Activo</span>')));
+    if (!ro) pb.ui.button($("<div>").appendTo($("<div>").appendTo($c)), { text: "Guardar parámetros", icon: "save", type: "default", onClick: async () => {
+      const r = await pb.post("/Seguridad/Parametros/Guardar", { valores: Object.keys(valores).map(k => ({ clave: k, valor: valores[k] })) });
+      if (r !== undefined) pb.notify("Parámetros de acceso guardados");
+    } });
+  });
+</script>
+}
