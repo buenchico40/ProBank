@@ -50,11 +50,13 @@
     }
 
     async function ficha(token, modo) {
-      const d = await pb.get(url("Detalle", "token=" + token));
+      const [d, ents] = await Promise.all([pb.get(url("Detalle", "token=" + token)), pb.get("/Coactivas/Oficios/Entidades")]);
       if (!d) return;
       const anulada = d.estado === "Anulado";
       if (modo === "edicion" && anulada) return pb.notify("La coactiva está anulada", "warning");
-      const datos = { numeroProceso: d.numeroProceso, oficio: d.oficio, entidad: d.entidad, cliente: d.cliente, identificacion: d.tipoIdentificacion + " " + d.identificacion,
+      // Entidades activas y la actual (aunque esté inactiva) para corregir la entidad de la coactiva
+      const entidades = (ents || []).filter(e => e.estado === "Activo" || e.entidadId === d.entidadId);
+      const datos = { numeroProceso: d.numeroProceso, oficio: d.oficio, entidadId: d.entidadId, cliente: d.cliente, identificacion: d.tipoIdentificacion + " " + d.identificacion,
         monto: d.monto, productos: coa.listaProd(d.productosPermitidos), bloqueado: pb.dinero(d.bloqueado), levantado: pb.dinero(d.levantado),
         transferido: pb.dinero(d.transferido), cobertura: d.cobertura, estado: d.estado, observacion: d.observacion || "" };
       pb.ui.detalle({
@@ -63,8 +65,9 @@
         items: ro => [
           { dataField: "numeroProceso", label: { text: "N.º de proceso" }, editorOptions: { readOnly: true } },
           { dataField: "oficio", label: { text: "Oficio" }, editorOptions: { readOnly: true } },
-          { dataField: "entidad", label: { text: "Entidad" }, editorOptions: { readOnly: true } },
-          { dataField: "cliente", label: { text: "Cliente / empresa" }, editorOptions: { readOnly: true } },
+          { dataField: "entidadId", label: { text: "Entidad" }, isRequired: !ro, editorType: "dxSelectBox",
+            editorOptions: { dataSource: entidades, valueExpr: "entidadId", displayExpr: e => e && (e.nombre + " · " + e.ruc), searchEnabled: true } },
+          { dataField: "cliente", label: { text: "Cliente / empresa" }, isRequired: !ro, editorOptions: { maxLength: 150 } },
           { dataField: "identificacion", label: { text: "Identificación (calculado)" }, editorOptions: { readOnly: true } },
           { dataField: "monto", label: { text: "Monto" }, isRequired: !ro, editorType: "dxNumberBox", editorOptions: { format: "$ #,##0.00", min: 0.01 } },
           { dataField: "productos", label: { text: "Productos a bloquear (vacío = todos)" }, editorType: "dxTagBox",
@@ -82,7 +85,8 @@
           coa.panel($("<div>").appendTo($p), d.token, { oficio: d.oficio });
         },
         alGuardar: async f => {
-          const r = await pb.post(url("Actualizar", "token=" + d.token), { monto: f.monto, productos: f.productos, observacion: f.observacion || null });
+          const r = await pb.post(url("Actualizar", "token=" + d.token), { monto: f.monto, productos: f.productos, observacion: f.observacion || null,
+            cliente: f.cliente, entidadId: f.entidadId });
           if (r === undefined) return;
           pb.notify("Registro " + d.numeroProceso + " guardado correctamente"); listado();
         },

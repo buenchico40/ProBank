@@ -44,7 +44,8 @@ public sealed record MovimientoDto(DateTime Fecha, string Tipo, string? Oficio, 
 public sealed record OrdenCoactivaDto(int OrdenId, string Tipo, string Oficio, DateTime Recibido, string RemitidoPor, decimal? MontoOrdenado,
     decimal Ejecutado, string Estado);
 
-public sealed record ActualizarCoactivaRequest(decimal Monto, IReadOnlyList<string>? Productos, string? Observacion);
+/// <summary>Cliente: corrige el nombre del cliente (todas sus coactivas). EntidadId: corrige la entidad. Null = sin cambio.</summary>
+public sealed record ActualizarCoactivaRequest(decimal Monto, IReadOnlyList<string>? Productos, string? Observacion, string? Cliente = null, int? EntidadId = null);
 public sealed record GuardarProductoRequest(int? ProductoId, string Tipo, string Numero, decimal Saldo);
 public sealed record RegistrarBloqueoRequest(int ProductoId, decimal Monto, string? Observacion);
 

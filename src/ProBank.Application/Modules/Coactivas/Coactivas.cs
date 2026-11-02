@@ -18,7 +18,7 @@ public interface ICoactivasRepository
 
     Task<IReadOnlyList<CoactivaDto>> ListarCoactivas(string? identificacion, CancellationToken ct);
     Task<CoactivaDetalleDto?> ObtenerCoactiva(Guid token, CancellationToken ct);
-    Task ActualizarCoactiva(Guid token, decimal monto, string? productos, string? observacion, Actor actor, CancellationToken ct);
+    Task ActualizarCoactiva(Guid token, decimal monto, string? productos, string? observacion, string? cliente, int? entidadId, Actor actor, CancellationToken ct);
     Task<int> AnularCoactiva(Guid token, DateOnly hoy, Actor actor, CancellationToken ct);
     Task GuardarProducto(Guid coactivaToken, GuardarProductoRequest r, Actor actor, CancellationToken ct);
     Task<string> RegistrarBloqueo(Guid coactivaToken, RegistrarBloqueoRequest r, DateOnly hoy, Actor actor, CancellationToken ct);
@@ -173,7 +173,9 @@ internal sealed class ActualizarCoactivaHandler(ICoactivasRepository repo, IPerm
         if (ReglasCoactiva.ValidarMonto(c.Request.Monto, "El monto de la coactiva") is { } em) return Result.Failure<string>(Error.Validation("monto", em));
         var (p, ep) = ReglasCoactiva.NormalizarProductos(c.Request.Productos is null ? null : string.Join(",", c.Request.Productos));
         if (ep is not null) return Result.Failure<string>(Error.Validation("productos", ep));
-        await repo.ActualizarCoactiva(c.Token, c.Request.Monto, p, c.Request.Observacion?.Trim(), Actor.De(user), ct);
+        var cliente = c.Request.Cliente?.Trim();
+        if (cliente is not null && cliente.Length is 0 or > 150) return Result.Failure<string>(Error.Validation("cliente", "El cliente o empresa es obligatorio (máximo 150 caracteres)."));
+        await repo.ActualizarCoactiva(c.Token, c.Request.Monto, p, c.Request.Observacion?.Trim(), cliente, c.Request.EntidadId, Actor.De(user), ct);
         return Result.Success("Coactiva actualizada");
     }
 }

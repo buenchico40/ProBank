@@ -81,8 +81,8 @@ internal sealed class CoactivasRepository(ISqlConnectionFactory db) : ICoactivas
             c.ProductosPermitidos, c.Observacion, productos, bloqueos, movimientos, ordenes);
     }
 
-    public Task ActualizarCoactiva(Guid token, decimal monto, string? productos, string? observacion, Actor a, CancellationToken ct) =>
-        Ejecutar("coa.usp_Coactiva_Actualizar", Con(new { Token = token, Monto = monto, Productos = productos, Observacion = observacion }, a), null, ct);
+    public Task ActualizarCoactiva(Guid token, decimal monto, string? productos, string? observacion, string? cliente, int? entidadId, Actor a, CancellationToken ct) =>
+        Ejecutar("coa.usp_Coactiva_Actualizar", Con(new { Token = token, Monto = monto, Productos = productos, Observacion = observacion, Cliente = cliente, EntidadId = entidadId }, a), null, ct);
 
     public async Task<int> AnularCoactiva(Guid token, DateOnly hoy, Actor a, CancellationToken ct) =>
         (await Ejecutar("coa.usp_Coactiva_Anular", Con(new { Token = token, Hoy = F(hoy) }, a),
