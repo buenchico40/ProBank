@@ -1,0 +1,141 @@
+@{ ViewData["Title"] = "Pagos"; ViewData["Opcion"] = "pagos"; }
+@section Scripts {
+<script src="~/js/presupuesto.js" asp-append-version="true"></script>
+<script>
+  // COM-04: pagos de solicitudes aprobadas. Se registran pendientes con su distribución por partida y, al marcarse Pagado,
+  // descuentan de cada partida (la distribución debe cuadrar con el monto). Facturas digitales y distribución adjuntas.
+  pb.listo.then(() => {
+    const $c = $("#content"), url = pres.url, $$ = pb.dinero;
+    let lista = null;
+
+    function listado() {
+      $c.empty();
+      lista = pb.ui.grid({
+        $c, modulo: "Presupuesto", titulo: "Pagos", opcion: "pagos", clave: "token",
+        cargar: () => pb.get(url("Pagos")),
+        columnas: [
+          { campo: "codigo", titulo: "Pago" }, { campo: "solicitud", titulo: "Solicitud" }, { campo: "proveedor", titulo: "Proveedor" },
+          { campo: "fecha", titulo: "Fecha", formato: "fecha" }, { campo: "monto", titulo: "Monto", formato: "dinero" },
+          { campo: "partidas", titulo: "Distribución", valor: p => !p.presupuestado ? "No presupuestado" : p.partidas || "Sin distribuir" },
+          { campo: "estado", titulo: "Estado", pill: true }
+        ],
+        anulada: p => p.estado === "Anulado",
+        botones: [
+          { text: "Nuevo", icon: "add", type: "default", accion: "crear", onClick: () => ficha(null, "nuevo") },
+          { text: "Editar", icon: "edit", accion: "editar", fila: true, onClick: p => ficha(p.token, "edicion") },
+          { text: "Marcar pagado", icon: "money", accion: "editar", fila: true, onClick: pagar },
+          { text: "Anular", icon: "clear", accion: "eliminar", fila: true, onClick: anular }
+        ],
+        alAbrir: p => ficha(p.token, "consulta"),
+        detalle: async ($e, p) => {
+          pb.ui.mdHead($e, [p.codigo, "Solicitud " + p.solicitud + " · " + p.solicitudDescripcion, p.proveedor, pb.fecha(p.fecha), $$(p.monto)], p.estado);
+          const d = await pb.get(url("Pago", "token=" + p.token));
+          if (!d) return;
+          if (p.presupuestado) pb.ui.mdGrid($e, "Distribución por partida", [["pa", "Partida"], ["r", "Rubro"], ["m", "Monto", "right"]],
+            d.distribucion.map(x => ({ pa: x.partida, r: x.rubro, m: $$(x.monto) })), "Pago sin distribuir.");
+          else pb.ui.mdNote($e, "Solicitud no presupuestada: el pago no descuenta de ninguna partida.");
+          $e.append($('<div class="mdtitle">').text("Facturas y distribución"));
+          pres.documentos($("<div>").appendTo($e), { dueno: "pagos", token: p.token, tipos: ["Factura", "Distribución"], docs: d.documentos, editable: false });
+          if (p.estado === "Pendiente" && pb.can("pagos", "editar")) pb.ui.mdActions($e, [{ text: "Marcar pagado", icon: "money", type: "default", onClick: () => pagar(p) }]);
+        }
+      });
+    }
+
+    async function pagar(p) {
+      if (p.estado !== "Pendiente") return pb.notify("Solo se paga un pago pendiente", "warning");
+      if (p.presupuestado && p.distribuido !== p.monto) return pb.notify("La distribución (" + $$(p.distribuido) + ") debe cuadrar con el monto del pago (" + $$(p.monto) + ")", "warning");
+      if (!await pb.ui.confirmar("Marcar pagado", "¿Registrar <b>" + pb.esc(p.codigo) + "</b> por " + $$(p.monto) + " como Pagado?" + (p.presupuestado ? " Descuenta de " + pb.esc(p.partidas) + "." : ""), "Pagado", "default", "money")) return;
+      const r = await pb.post(url("Pagar", "token=" + p.token));
+      if (r !== undefined) { pb.notify(p.codigo + " · " + r); lista.recargar(); }
+    }
+
+    async function anular(p) {
+      if (p.estado === "Anulado") return pb.notify("El pago ya está anulado", "warning");
+      if (!await pb.ui.confirmar("Anular pago", "¿Desea anular <b>" + pb.esc(p.codigo) + "</b>?" + (p.estado === "Pagado" ? " Ya estaba pagado: deja de descontar de sus partidas." : ""), "Anular", "danger", "clear")) return;
+      if (await pb.post(url("AnularPago", "token=" + p.token)) !== undefined) { pb.notify("Pago " + p.codigo + " anulado"); lista.recargar(); }
+    }
+
+    async function ficha(token, modo, solicitudInicial) {
+      const [d, sols, ps] = await Promise.all([token ? pb.get(url("Pago", "token=" + token)) : null, pb.get(url("Solicitudes")), pres.partidas(false)]);
+      if ((token && !d) || !sols) return;
+      const p = d && d.pago;
+      if (modo === "edicion" && p.estado !== "Pendiente") return pb.notify("Solo se corrigen pagos pendientes; puede adjuntar facturas desde la consulta", "warning");
+      // Solicitudes que se pueden pagar: aprobadas con saldo (o la del pago que se edita)
+      const pagables = sols.filter(s => s.estado === "En curso" || (p && s.token === p.solicitudToken));
+      if (!p && !pagables.length) return pb.notify("No hay solicitudes aprobadas con saldo por pagar", "warning");
+      const sol = t => sols.find(s => s.token === t);
+      const datos = p ? { codigo: p.codigo, solicitud: p.solicitudToken, proveedor: p.proveedor, fecha: pb.aFecha(p.fecha), monto: p.monto, estado: p.estado,
+                          pagado: p.pagadoPor ? p.pagadoPor + " · " + pb.fechaHora(p.fechaPagado) : "—" }
+                      : { codigo: "(se asigna al guardar)", solicitud: solicitudInicial && sol(solicitudInicial) ? solicitudInicial : null, proveedor: "", fecha: new Date(), monto: null, estado: "Pendiente", pagado: "—" };
+      if (!p && datos.solicitud) { const s = sol(datos.solicitud); datos.proveedor = s.proveedor || ""; datos.monto = s.porPagar; }
+      const ro = modo === "consulta";
+      let dist = d ? d.distribucion.map((x, i) => ({ id: i + 1, partida: x.partidaToken, monto: x.monto })) : [];
+      let form = null, $dist = null, gDist = null, $cuadre = null;
+      const presupuestada = () => { const s = sol(form ? form.option("formData").solicitud : datos.solicitud); return s ? s.presupuestado : true; };
+      const cuadre = () => {
+        if (!$cuadre) return;
+        const m = +(form ? form.option("formData").monto : datos.monto) || 0, sum = dist.reduce((a, x) => a + (+x.monto || 0), 0), ok = Math.abs(sum - m) < 0.005;
+        $cuadre.empty().append($("<span>").text("Distribuido " + $$(sum) + " de " + $$(m))).append($("<span>").addClass(ok ? "pill pill-g" : "pill pill-a").text(ok ? "Cuadrado" : "Diferencia " + $$(Math.abs(m - sum))));
+      };
+      const verDist = () => { if ($dist) $dist.toggle(presupuestada()); };
+      form = pb.ui.detalle({
+        $c, modulo: "Presupuesto", titulo: "Pagos", modo, nombre: p && p.codigo, token: p && p.token, datos,
+        soloLectura: ro && (!pb.can("pagos", "editar") || p.estado !== "Pendiente"),
+        items: r => [
+          { dataField: "codigo", label: { text: "Pago (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "solicitud", label: { text: "Solicitud aprobada" }, colSpan: 2, isRequired: !r, editorType: "dxSelectBox",
+            editorOptions: { dataSource: pagables.map(s => ({ t: s.token, x: s.codigo + " · " + s.descripcion + " · por pagar " + $$(s.porPagar) + (s.presupuestado ? "" : " · no presupuestada") })),
+              valueExpr: "t", displayExpr: "x", searchEnabled: true, readOnly: r || !!p,
+              onValueChanged: e => { const s = sol(e.value); if (s && form && !p) { form.updateData("proveedor", s.proveedor || ""); form.updateData("monto", s.porPagar); } verDist(); cuadre(); } } },
+          { dataField: "proveedor", label: { text: "Proveedor" }, isRequired: !r, editorOptions: { maxLength: 150 } },
+          { dataField: "fecha", label: { text: "Fecha" }, editorType: "dxDateBox", isRequired: !r, editorOptions: { displayFormat: "dd/MM/yyyy" } },
+          { dataField: "monto", label: { text: "Monto" }, editorType: "dxNumberBox", isRequired: !r, editorOptions: { format: "$ #,##0.00", min: 0.01, onValueChanged: () => setTimeout(cuadre, 0) } },
+          { dataField: "estado", label: { text: "Estado (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "pagado", label: { text: "Pagado por (calculado)" }, editorOptions: { readOnly: true } }
+        ],
+        extra: ($x, r) => {
+          // Distribución por partida (renderPagoDist del prototipo)
+          $dist = $('<div class="card pad stack">').appendTo($x);
+          $dist.append("<h2>Distribución por partida</h2>").append($('<p class="muted" style="margin:0">').text("Al marcar el pago como Pagado, estos montos se descuentan del presupuesto de cada partida. Debe cuadrar con el monto del pago."));
+          gDist = $("<div>").appendTo($dist).dxDataGrid({
+            dataSource: dist, keyExpr: "id", showBorders: true, showRowLines: true, paging: { enabled: false }, noDataText: "Sin distribución.",
+            editing: r ? {} : { mode: "cell", allowAdding: true, allowUpdating: true, allowDeleting: true, useIcons: true, confirmDelete: false, newRowPosition: "last" },
+            onInitNewRow: e => { e.data.id = Date.now(); e.data.monto = 0; },
+            onSaved: cuadre, onRowRemoved: cuadre,
+            toolbar: r ? { visible: false } : { items: [{ name: "addRowButton", showText: "always", options: { text: "Agregar partida", icon: "add", stylingMode: "contained" } }] },
+            columns: [
+              { dataField: "partida", caption: "Partida", validationRules: [{ type: "required" }],
+                lookup: { dataSource: ps.concat((d ? d.distribucion : []).filter(x => !ps.some(y => y.token === x.partidaToken)).map(x => ({ token: x.partidaToken, texto: x.partida + " · " + x.rubro }))),
+                  valueExpr: "token", displayExpr: "texto" } },
+              { dataField: "monto", caption: "Monto", dataType: "number", alignment: "right", format: "$ #,##0.00", editorOptions: { format: "$ #,##0.00", min: 0 }, width: 180 }
+            ].concat(r ? [] : [{ type: "buttons", width: 60, buttons: ["delete"] }])
+          }).dxDataGrid("instance");
+          $cuadre = $('<div class="cov">').appendTo($dist);
+          setTimeout(() => { verDist(); cuadre(); }, 0);
+          // Facturas digitales y distribución (se adjuntan con el pago guardado)
+          const $doc = $('<div class="card pad stack">').appendTo($x);
+          $doc.append("<h2>Facturas y distribución</h2>");
+          pres.documentos($("<div>").appendTo($doc), { dueno: "pagos", token: p && p.token, tipos: ["Factura", "Distribución"], docs: d ? d.documentos : [],
+            editable: !!p && p.estado !== "Anulado" && (pb.can("pagos", "editar") || pb.can("pagos", "crear")), listo: () => ficha(token, modo) });
+        },
+        alGuardar: async f => {
+          await gDist.saveEditData();
+          const pres_ = presupuestada();
+          const distribucion = pres_ ? dist.filter(x => x.partida && +x.monto > 0).map(x => ({ partida: x.partida, monto: +x.monto })) : [];
+          const g = await pb.post(url("GuardarPago", p ? "token=" + p.token : ""), { solicitud: f.solicitud, proveedor: f.proveedor, fecha: pres.iso(f.fecha), monto: f.monto, distribucion });
+          if (g === undefined) return;
+          const cuadra = Math.abs(distribucion.reduce((a, x) => a + x.monto, 0) - f.monto) < 0.005;
+          pb.notify((p ? "Pago guardado" : "Pago registrado como pendiente") + (pres_ && !cuadra ? ": complete la distribución antes de marcarlo Pagado" : ". Ahora puede adjuntar las facturas"));
+          return ficha(g, "consulta");
+        },
+        alEditar: () => ficha(token, "edicion"),
+        alVolver: listado
+      });
+    }
+
+    // Desde una solicitud aprobada: «Registrar pago» abre el pago nuevo con la solicitud elegida
+    const desde = new URLSearchParams(location.search).get("solicitud");
+    if (desde) ficha(null, "nuevo", desde); else listado();
+  });
+</script>
+}

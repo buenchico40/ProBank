@@ -1,0 +1,54 @@
+@{ ViewData["Title"] = "Ajustes y movimientos"; ViewData["Opcion"] = "movimientos"; }
+@section Scripts {
+<script src="~/js/presupuesto.js" asp-append-version="true"></script>
+<script>
+  // Reasignaciones, incrementos y reducciones del presupuesto: quedan pendientes y, al aprobarse, cambian los ajustes de las partidas.
+  pb.listo.then(() => {
+    const $c = $("#content"), url = pres.url, $$ = pb.dinero;
+    let lista = null;
+    const recargar = () => lista.recargar();
+    const partida = (cod, rubro) => cod ? cod + " · " + rubro : "—";
+
+    lista = pb.ui.grid({
+      $c, modulo: "Presupuesto", titulo: "Ajustes y movimientos", opcion: "movimientos", clave: "token",
+      cargar: () => pb.get(url("Movimientos")),
+      columnas: [
+        { campo: "codigo", titulo: "Movimiento" }, { campo: "fecha", titulo: "Fecha", formato: "fecha" }, { campo: "tipo", titulo: "Tipo" },
+        { campo: "origen", titulo: "Partida origen", valor: m => m.origen || "—" }, { campo: "destino", titulo: "Partida destino", valor: m => m.destino || "—" },
+        { campo: "monto", titulo: "Monto", formato: "dinero" }, { campo: "motivo", titulo: "Motivo" }, { campo: "estado", titulo: "Estado", pill: true }
+      ],
+      anulada: m => m.estado === "Anulada",
+      botones: [
+        { text: "Nuevo", icon: "add", type: "default", accion: "crear", onClick: () => pres.movimientoPopup(null, null, recargar) },
+        { text: "Editar", icon: "edit", accion: "editar", fila: true, onClick: m => m.estado === "Pendiente" ? pres.movimientoPopup(m, null, recargar) : pb.notify("Solo se corrigen movimientos pendientes", "warning") },
+        { text: "Aprobar", icon: "check", accion: "aprobar", fila: true, onClick: m => resolver(m, true) },
+        { text: "Rechazar", icon: "close", accion: "aprobar", fila: true, onClick: m => resolver(m, false) },
+        { text: "Anular", icon: "clear", accion: "eliminar", fila: true, onClick: anular }
+      ],
+      alAbrir: m => lista.grid().expandRow(m.token),
+      detalle: ($e, m) => {
+        pb.ui.mdHead($e, [m.codigo, m.tipo, $$(m.monto), pb.fecha(m.fecha), "Registró " + m.registradoPor], m.estado);
+        pb.ui.mdNote($e, "Motivo: " + m.motivo);
+        const filas = [];
+        if (m.origen) filas.push({ p: m.origen, r: m.origenRubro, e: "-" + $$(m.monto), d: (m.origenDisponible < 0 ? "-" : "") + $$(Math.abs(m.origenDisponible)) });
+        if (m.destino) filas.push({ p: m.destino, r: m.destinoRubro, e: "+" + $$(m.monto), d: (m.destinoDisponible < 0 ? "-" : "") + $$(Math.abs(m.destinoDisponible)) });
+        pb.ui.mdGrid($e, "Partidas afectadas", [["p", "Partida"], ["r", "Rubro"], ["e", "Efecto", "right"], ["d", "Disponible actual", "right"]], filas);
+        if (m.resueltoPor) pb.ui.mdNote($e, (m.estado === "Aprobada" ? "Aprobó " : "Resolvió ") + m.resueltoPor + " el " + pb.fechaHora(m.fechaResolucion) + (m.comentario ? " · " + m.comentario : ""));
+        if (m.estado === "Pendiente" && pb.can("movimientos", "aprobar"))
+          pb.ui.mdActions($e, [{ text: "Aprobar", icon: "check", type: "default", onClick: () => resolver(m, true) }, { text: "Rechazar", icon: "close", onClick: () => resolver(m, false) }]);
+      }
+    });
+
+    function resolver(m, aprobar) {
+      if (m.estado !== "Pendiente") return pb.notify("Solo se resuelven movimientos pendientes", "warning");
+      pres.resolver(url("ResolverMovimiento", "token=" + m.token), m.codigo, aprobar, recargar);
+    }
+
+    async function anular(m) {
+      if (m.estado !== "Pendiente") return pb.notify("Solo se anulan movimientos pendientes; lo aprobado se corrige con otro movimiento", "warning");
+      if (!await pb.ui.confirmar("Anular movimiento", "¿Desea anular <b>" + pb.esc(m.codigo) + "</b>?", "Anular", "danger", "clear")) return;
+      if (await pb.post(url("AnularMovimiento", "token=" + m.token)) !== undefined) { pb.notify("Movimiento " + m.codigo + " anulado"); recargar(); }
+    }
+  });
+</script>
+}

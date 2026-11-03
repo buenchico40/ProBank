@@ -36,22 +36,38 @@ public sealed class PortafolioTests
         Assert.Equal("forbidden", t.Aprobar(1, Hoy.ToDateTime(TimeOnly.MinValue)).Error.Code);
     }
 
-    [Fact(DisplayName = "El informe de seguimiento codifica los textos (sin HTML inyectado)")]
-    public void InformeCodificado()
+    private static InformeDatos DatosInforme() => new(
+        [new ResumenInformeDto("PRY-001", "Portal", "Proyecto", "En curso", 4, 1, 25, 2, 2, 1, 1),
+         new ResumenInformeDto("BUG-002", "Error de saldo", "Bug", "En curso", 2, 2, 100, 1, 1, 0, 0)],
+        [new BitacoraFila(Hoy.AddDays(-4).ToDateTime(new TimeOnly(9, 30)), "PRY-001", "TAR-0001", "Migrar", "Rechazo", "falta respaldo", "Ana"),
+         new BitacoraFila(Hoy.AddDays(-4).ToDateTime(new TimeOnly(11, 0)), "PRY-001", "TAR-0001", "Migrar", "Envío a aprobación", null, "Ana"),
+         new BitacoraFila(Hoy.ToDateTime(new TimeOnly(8, 0)), "BUG-002", "TAR-0002", "Corregir", "Envío a aprobación", null, "Luis")],
+        [new AcuerdoInformeFila(Hoy.ToDateTime(TimeOnly.MinValue), "PRY-001", "ACU-0001", "Publicar en pruebas", "Luis", Hoy.AddDays(-1).ToDateTime(TimeOnly.MinValue), "Vencido"),
+         new AcuerdoInformeFila(Hoy.ToDateTime(TimeOnly.MinValue), "PRY-001", "ACU-0002", "Revisar respaldo", "Ana", Hoy.ToDateTime(TimeOnly.MinValue), "Cumplido")],
+        []);
+
+    [Fact(DisplayName = "Informe de seguimiento · indicadores del periodo")]
+    public void InformeIndicadores()
     {
-        var i = new InformeContenidoDto(1, "INF-0001", "Semanal", Hoy.AddDays(-4), Hoy, "Borrador", null);
-        var datos = new InformeDatos(
-            [new ResumenInformeDto("PRY-001", "<script>alert(1)</script>", "Proyecto", "En curso", 4, 1, 25, 2, 1, 0, 1)],
-            [new BitacoraFila(Hoy.ToDateTime(new TimeOnly(9, 30)), "PRY-001", "TAR-0001", "Migrar", "Rechazo", "<b>falta</b> respaldo", "Ana")],
-            [new AcuerdoInformeFila(Hoy.ToDateTime(TimeOnly.MinValue), "PRY-001", "ACU-0001", "Publicar en pruebas", "Luis", Hoy.AddDays(-1).ToDateTime(TimeOnly.MinValue), "Vencido")],
-            []);
-        var html = InformeHtml.Armar(i, datos, "Gerencia & TI", Hoy.ToDateTime(new TimeOnly(18, 0)));
-        Assert.DoesNotContain("<script>", html);
-        Assert.Contains("&lt;script&gt;", html);
-        Assert.Contains("&lt;b&gt;falta&lt;/b&gt;", html);
-        Assert.Contains("Gerencia &amp; TI", html);
-        Assert.Contains("25 % (1 de 4)", html);
-        Assert.Contains("Vencido", html);
-        Assert.Contains("26/10/2026", html);
+        var i = new InformeContenidoDto(1, "INF-0001", "Semanal", Hoy.AddDays(-4), Hoy, "Borrador", false);
+        var m = InformeModelo.Armar(i, DatosInforme(), "Gerencia & TI", Hoy.ToDateTime(new TimeOnly(18, 0)));
+        Assert.Equal("Informe semanal de seguimiento", m.Titulo);
+        Assert.Equal("Del 26/10/2026 al 30/10/2026", m.Periodo);
+        Assert.Equal("Generado el 30/10/2026 18:00 por Gerencia & TI", m.Generado);
+        Assert.Equal(["2", "50 %", "3", "2"], m.Indicadores.Select(k => k.Valor));
+        Assert.Equal("3 de 6 tareas completadas", m.Indicadores[1].Nota);
+        Assert.Equal("1 cumplidos · 1 vencidos", m.Indicadores[3].Nota);
+    }
+
+    [Fact(DisplayName = "Informe de seguimiento · series de los gráficos")]
+    public void InformeGraficos()
+    {
+        var i = new InformeContenidoDto(1, "INF-0001", "Semanal", Hoy.AddDays(-4), Hoy, "Borrador", false);
+        var m = InformeModelo.Armar(i, DatosInforme(), "Ana", Hoy.ToDateTime(TimeOnly.MinValue));
+        Assert.Equal(["BUG-002", "PRY-001"], m.AvancePorItem.Select(x => x.Item));      // de mayor a menor avance
+        Assert.Equal(3, m.AvancePorItem[1].Pendientes);
+        Assert.Equal(["Cumplido", "Vencido"], m.AcuerdosPorEstado.Select(x => x.Nombre));
+        Assert.Equal([2, 0, 0, 0, 1], m.MovimientosPorDia.Select(x => x.Cantidad));       // un punto por día, con ceros
+        Assert.Equal(("Envío a aprobación", 2), (m.EventosPorTipo[0].Nombre, m.EventosPorTipo[0].Cantidad));
     }
 }

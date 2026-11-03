@@ -9,6 +9,7 @@ Una decisión por archivo, numerada. Para cambiar una decisión se agrega un ADR
 - [Cola y programador sobre SQL Server](0005-cola-sql.md)
 - [Aprobadores por tarea, no grupo único](0006-aprobadores-por-tarea.md)
 - [Consultas dinámicas solo con procedimientos](0007-consultas-solo-sp.md)
-- [Correo con Microsoft Graph](0008-correo-graph.md)
+- [Correo con Microsoft Graph](0008-correo-graph.md) · reemplazada por 0011
 - [Pruebas de punta a punta con Playwright en TypeScript](0009-playwright-typescript.md)
 - [Inicio de sesión con usuario y contraseña](0010-usuario-y-clave.md)
+- [Correo por Microsoft Graph o SMTP, configurado en la aplicación](0011-correo-smtp.md)

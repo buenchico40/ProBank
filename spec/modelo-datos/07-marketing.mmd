@@ -1,39 +1,40 @@
 erDiagram
-  Promocion ||--o{ PromocionAudiencia : "visible para"
-  Comunicado ||--o{ ComunicadoAudiencia : "visible para"
+  Usuario ||--o{ Promocion : "crea y publica"
+  Usuario ||--o{ Comunicado : "crea y publica"
   Promocion {
     int PromocionId PK
     uniqueidentifier Token
-    varchar Codigo
+    varchar Codigo "PRM-001 (calculado)"
     nvarchar Titulo
-    varchar Ubicacion "panel principal, inicio de sesión"
-    nvarchar ImagenBlob "Azure Blob Storage"
+    nvarchar Ubicacion "Panel principal, Inicio de sesión"
+    varchar ImagenRuta "Blob Storage · contenedor marketing"
+    varchar ImagenTipo "image/jpeg, image/png"
     nvarchar TextoAlternativo
-    nvarchar Enlace
-    date VigenteDesde
-    date VigenteHasta
+    nvarchar Enlace "https"
+    date Desde
+    date Hasta
+    nvarchar Audiencia "Todos o un rol (seg.Rol)"
     int Orden "orden en el carrusel"
-    varchar Estado "borrador, publicado, retirado"
+    varchar Estado "Borrador, Publicado, Retirado · se muestra Programado o Vencido según la vigencia"
+    int CreadoPorId FK "seg.Usuario"
     int PublicadoPorId FK "seg.Usuario"
-  }
-  PromocionAudiencia {
-    int PromocionId PK,FK
-    int RolId PK,FK "seg.Rol · sin filas = todos"
+    datetime2 FechaPublicacion
   }
   Comunicado {
     int ComunicadoId PK
     uniqueidentifier Token
-    varchar Codigo
+    varchar Codigo "COM-001 (calculado)"
     nvarchar Titulo
-    varchar Tipo "aviso, noticia, mantenimiento, campaña"
-    nvarchar ContenidoHtml "editor enriquecido"
-    date PublicadoDesde
-    date PublicadoHasta
+    nvarchar Tipo "Aviso, Noticia, Mantenimiento, Campaña"
+    nvarchar Resumen "tarjeta del Panel"
+    nvarchar ContenidoHtml "secciones · editor enriquecido"
+    nvarchar Contacto
+    date Desde
+    date Hasta
+    nvarchar Audiencia "Todos o un rol (seg.Rol)"
     bit Destacado
-    varchar Estado "borrador, publicado, retirado"
+    varchar Estado "Borrador, Publicado, Retirado"
+    int CreadoPorId FK "seg.Usuario"
     int PublicadoPorId FK "seg.Usuario"
-  }
-  ComunicadoAudiencia {
-    int ComunicadoId PK,FK
-    int RolId PK,FK "seg.Rol · sin filas = todos"
+    datetime2 FechaPublicacion
   }

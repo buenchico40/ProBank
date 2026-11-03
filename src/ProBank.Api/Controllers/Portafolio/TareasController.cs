@@ -3,6 +3,7 @@ using ProBank.Api.Infrastructure;
 using ProBank.Application.Abstractions;
 using ProBank.Application.Modules.Portafolio;
 using ProBank.Contracts.Portafolio;
+using ProBank.Domain.Modules.Portafolio;
 
 namespace ProBank.Api.Controllers.Portafolio;
 
@@ -65,6 +66,46 @@ public sealed class PortafolioController(IDispatcher dispatcher) : ControllerBas
     [HttpDelete("items/{token:guid}")]
     public async Task<IActionResult> EliminarItem(Guid token, CancellationToken ct) => this.ToActionResult(await dispatcher.Send(new EliminarItemCommand(token), ct));
 
+    /// <summary>Documentos de un ítem («items») o de una tarea («tareas»).</summary>
+    [HttpGet("{dueno:regex(^(items|tareas)$)}/{token:guid}/adjuntos")]
+    public async Task<IActionResult> Adjuntos(string dueno, Guid token, CancellationToken ct) =>
+        this.ToActionResult(await dispatcher.Query(new ListarAdjuntosQuery(Ambito(dueno), token), ct));
+
+    /// <summary>Tipos y tamaño máximo según Portafolio › Parametrización (la validación la hace el comando).</summary>
+    [HttpPost("{dueno:regex(^(items|tareas)$)}/{token:guid}/adjuntos")]
+    [RequestSizeLimit(21_000_000)]
+    public async Task<IActionResult> SubirAdjunto(string dueno, Guid token, IFormFile archivo, [FromForm] string? descripcion, CancellationToken ct)
+    {
+        if (archivo.Length > ReglasAdjunto.MaximoMBPermitido * 1024L * 1024L)
+            return Problem(statusCode: 422, title: "tamano", detail: $"El archivo supera el máximo de {ReglasAdjunto.MaximoMBPermitido} MB.");
+        using var ms = new MemoryStream();
+        await archivo.CopyToAsync(ms, ct);
+        return this.ToActionResult(await dispatcher.Send(new SubirAdjuntoCommand(Ambito(dueno), token, archivo.FileName, descripcion, ms.ToArray()), ct));
+    }
+
+    [HttpPut("adjuntos/{token:guid}")]
+    public async Task<IActionResult> ActualizarAdjunto(Guid token, ActualizarAdjuntoRequest r, CancellationToken ct) =>
+        this.ToActionResult(await dispatcher.Send(new ActualizarAdjuntoCommand(token, r.Descripcion), ct));
+
+    private static AmbitoAdjunto Ambito(string dueno) => dueno == "items" ? AmbitoAdjunto.Item : AmbitoAdjunto.Tarea;
+
+    [HttpGet("adjuntos/parametros")]
+    public async Task<IActionResult> ParametrosAdjunto(CancellationToken ct) => this.ToActionResult(await dispatcher.Query(new ParametrosAdjuntoQuery(), ct));
+
+    [HttpPut("adjuntos/parametros/{ambito}")]
+    public async Task<IActionResult> GuardarParametroAdjunto(string ambito, GuardarParametroAdjuntoRequest r, CancellationToken ct) =>
+        this.ToActionResult(await dispatcher.Send(new GuardarParametroAdjuntoCommand(ambito, r), ct));
+
+    [HttpGet("adjuntos/{token:guid}")]
+    public async Task<IActionResult> DescargarAdjunto(Guid token, CancellationToken ct)
+    {
+        var r = await dispatcher.Query(new DescargarAdjuntoQuery(token), ct);
+        return r.IsSuccess ? File(r.Value.Contenido, r.Value.TipoContenido, r.Value.Nombre) : this.ToActionResult(r);
+    }
+
+    [HttpDelete("adjuntos/{token:guid}")]
+    public async Task<IActionResult> EliminarAdjunto(Guid token, CancellationToken ct) => this.ToActionResult(await dispatcher.Send(new EliminarAdjuntoCommand(token), ct));
+
     [HttpPut("items/{token:guid}/hitos")]
     public async Task<IActionResult> Hitos(Guid token, GuardarHitosRequest r, CancellationToken ct) => this.ToActionResult(await dispatcher.Send(new GuardarHitosCommand(token, r.Hitos), ct));
 
@@ -104,6 +145,14 @@ public sealed class PortafolioController(IDispatcher dispatcher) : ControllerBas
 
     [HttpPost("informes/{id:int}/generar")]
     public async Task<IActionResult> GenerarInforme(int id, CancellationToken ct) => this.ToActionResult(await dispatcher.Send(new GenerarInformeCommand(id), ct));
+
+    /// <summary>PDF del informe generado (DevExpress Reporting).</summary>
+    [HttpGet("informes/{id:int}/pdf")]
+    public async Task<IActionResult> InformePdf(int id, CancellationToken ct)
+    {
+        var r = await dispatcher.Query(new InformePdfQuery(id), ct);
+        return r.IsSuccess ? File(r.Value.Contenido, r.Value.TipoContenido, r.Value.Nombre) : this.ToActionResult(r);
+    }
 
     /// <summary>PRY-09: qué roles ejecutan cada acción.</summary>
     [HttpGet("parametrizacion")]

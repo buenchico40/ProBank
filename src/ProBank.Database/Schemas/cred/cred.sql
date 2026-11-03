@@ -1,2 +1,2 @@
--- Certificados y secretos
+-- Bóveda
 CREATE SCHEMA [cred] AUTHORIZATION [dbo];

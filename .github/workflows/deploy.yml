@@ -11,12 +11,20 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      # Licencia de DevExpress (contenido de DevExpress_License.txt): la exige la compilación de DevExpress Reporting
+      DevExpress_License: ${{ secrets.DEVEXPRESS_LICENSE }}
     environment: ${{ inputs.ambiente }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+      # Los paquetes de DevExpress no están en nuget.org: feed personal https://nuget.devexpress.com/<clave>/api/v3/index.json
+      - name: Feed de DevExpress
+        env:
+          FEED: ${{ secrets.DEVEXPRESS_NUGET_FEED }}
+        run: dotnet nuget add source "$FEED" --name DevExpress
       - run: dotnet publish src/ProBank.Api -c Release -o out/api
       - run: dotnet publish src/ProBank.Web -c Release -o out/web
       - run: dotnet build src/ProBank.Database/ProBank.Database.sqlproj -c Release
@@ -30,6 +38,8 @@ jobs:
           connection-string: ${{ secrets.SQL_DEPLOY_CONNECTION }}
           path: src/ProBank.Database/bin/Release/ProBank.Database.dacpac
           action: publish
+          # Las llaves de Always Encrypted son de cada ambiente (ProBank.Setup llaves): el .dacpac no las toca.
+          arguments: '/p:ExcludeObjectTypes=ColumnMasterKeys;ColumnEncryptionKeys'
       - uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ vars.API_APP_NAME }}

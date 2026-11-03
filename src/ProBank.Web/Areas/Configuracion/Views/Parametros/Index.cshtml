@@ -1,0 +1,104 @@
+@{ ViewData["Title"] = "Parámetros generales"; ViewData["Opcion"] = "config"; }
+@section Scripts {
+<script>
+  // CFG-01 a CFG-04: configuración global de la solución por categoría. Los cambios se aplican de inmediato y quedan en la
+  // auditoría con su valor anterior; los secretos se indican solo por su nombre en Key Vault.
+  pb.listo.then(async () => {
+    const $c = $("#content"), url = a => "/Configuracion/Datos/" + a;
+    const PROVEEDORES = { Graph: "Microsoft 365 (Graph)", Smtp: "SMTP del banco", Carpeta: "Carpeta local (solo desarrollo)" };
+    const SEGURIDAD = { StartTls: "STARTTLS (587)", TlsDirecto: "TLS directo (465)", Ninguna: "Sin cifrado (relay interno)" };
+    const ro = !pb.can("config", "editar");
+    // En el formulario la clave va sin puntos: dxForm lee «Correo.Proveedor» como un objeto anidado
+    const k = clave => clave.split(".").join("_");
+    let forms = [];
+
+    async function pintar() {
+      $c.empty();
+      pb.ui.head($c, "Configuración", "Parámetros generales");
+      $c.append($("<h1>").text("Parámetros generales"));
+      const params = await pb.get(url("Parametros"));
+      if (!params) return;
+      const datos = {};
+      params.forEach(p => { datos[k(p.clave)] = p.tipo === "Numero" && p.valor != null ? +p.valor : p.valor; });
+      $('<div class="card pad">').appendTo($c).append($('<p class="muted" style="margin:0">').text(
+        "Configuración de toda la solución. Los cambios se aplican de inmediato (sin reiniciar) y quedan en la auditoría con su valor anterior. " +
+        "Las claves y cadenas de conexión nunca se escriben aquí: solo el nombre del secreto en Key Vault."));
+      forms = [];
+      const categorias = [...new Set(params.map(p => p.categoria))];
+      categorias.forEach(cat => {
+        const $card = $('<div class="card pad stack">').appendTo($c);
+        $card.append($("<h2>").text(cat));
+        const items = params.filter(p => p.categoria === cat).map(p => item(p));
+        const ultimo = params.filter(p => p.categoria === cat && p.fechaModificacion).sort((a, b) => b.fechaModificacion.localeCompare(a.fechaModificacion))[0];
+        const form = $("<div>").appendTo($card).dxForm({ formData: datos, readOnly: ro, labelLocation: "top", showColonAfterLabel: false,
+          colCountByScreen: { lg: 2, md: 2, sm: 1, xs: 1 }, items }).dxForm("instance");
+        forms.push(form);
+        if (ultimo) $card.append($('<p class="muted" style="margin:0">').text("Último cambio: " + (ultimo.modificadoPor || "—") + " el " + pb.fechaHora(ultimo.fechaModificacion)));
+      });
+      visibles(datos);
+      const $a = $('<div class="actions">').appendTo($c);
+      if (!ro) {
+        pb.ui.button($("<div>").appendTo($a), { text: "Guardar parámetros", icon: "save", type: "default", onClick: () => guardar(params, datos) });
+        pb.ui.button($("<div>").appendTo($a), { text: "Probar envío de correo", icon: "email", onClick: probar });
+      }
+    }
+
+    function item(p) {
+      const base = { dataField: k(p.clave), label: { text: p.nombre }, helpText: p.descripcion || undefined };
+      switch (p.tipo) {
+        case "Lista": {
+          const textos = p.clave === "Correo.Proveedor" ? PROVEEDORES : p.clave === "Correo.Smtp.Seguridad" ? SEGURIDAD : {};
+          return Object.assign(base, { editorType: "dxSelectBox", editorOptions: {
+            items: (p.opciones || "").split(",").map(s => s.trim()).filter(Boolean).map(k => ({ k, t: textos[k] || k })), valueExpr: "k", displayExpr: "t",
+            onValueChanged: () => setTimeout(() => visibles(forms[0] && forms[0].option("formData"))) } });
+        }
+        case "Numero": return Object.assign(base, { editorType: "dxNumberBox", editorOptions: { min: p.minimo, max: p.maximo, showSpinButtons: true, format: "#0" } });
+        case "Correo": return Object.assign(base, { editorOptions: { mode: "email", maxLength: 256 }, validationRules: [{ type: "email", message: "No es un correo válido" }] });
+        case "Secreto": return Object.assign(base, { editorOptions: { maxLength: 127, placeholder: (p.prefijo || "") + "…" },
+          validationRules: [{ type: "pattern", pattern: new RegExp("^" + (p.prefijo || "") + "[A-Za-z0-9-]+$"), message: "Solo el nombre del secreto, que empiece con " + p.prefijo }] });
+        default: return Object.assign(base, { editorOptions: { maxLength: 1000 } });
+      }
+    }
+
+    // Correo: el buzón solo con Microsoft 365; los datos SMTP solo con SMTP
+    function visibles(d) {
+      if (!d) return;
+      const prov = d[k("Correo.Proveedor")] || "Graph";
+      forms.forEach(f => (f.option("items") || []).forEach(it => {
+        if (it.dataField === k("Correo.BuzonServicio")) f.itemOption(it.dataField, "visible", prov === "Graph");
+        else if ((it.dataField || "").startsWith(k("Correo.Smtp."))) f.itemOption(it.dataField, "visible", prov === "Smtp");
+      }));
+    }
+
+    async function guardar(params, datos) {
+      if (forms.some(f => !f.validate().isValid)) return pb.notify("Revise los campos marcados", "warning");
+      const valores = {};
+      params.forEach(p => {
+        const v = datos[k(p.clave)], s = v == null || v === "" ? null : String(v);
+        if (s !== (p.valor == null || p.valor === "" ? null : p.valor)) valores[p.clave] = s;
+      });
+      if (!Object.keys(valores).length) return pb.notify("No hay cambios que guardar", "info");
+      const r = await pb.post(url("Guardar"), { valores });
+      if (r === undefined) return;
+      pb.notify(r); pintar();
+    }
+
+    function probar() {
+      const data = { destinatario: "" };
+      pb.ui.openPopup("Probar envío de correo", $f => {
+        $f.append($('<p class="muted" style="margin:0 0 8px">').text("Envía un correo de prueba con la configuración guardada (guarde antes los cambios). El resultado queda en la auditoría."));
+        return $("<div>").appendTo($f).dxForm({ formData: data, labelLocation: "top", items: [
+          { dataField: "destinatario", label: { text: "Enviar a" }, isRequired: true, editorOptions: { mode: "email" },
+            validationRules: [{ type: "email", message: "No es un correo válido" }] }] }).dxForm("instance");
+      }, async f => {
+        if (!f.validate().isValid) return false;
+        const r = await pb.post(url("ProbarCorreo"), { destinatario: data.destinatario });
+        if (r === undefined) return false;
+        pb.notify(r);
+      }, "Enviar prueba", 480, { icono: "email" });
+    }
+
+    pintar();
+  });
+</script>
+}

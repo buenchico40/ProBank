@@ -32,16 +32,19 @@
           const [d, ts] = await Promise.all([pb.get(pry.url("Item", "token=" + i.token)), pb.get(pry.url("Tareas", "item=" + i.token))]);
           if (!d || !ts) return;
           pb.ui.mdGrid($e, "Responsables", [["n", "Nombre"], ["u", "Usuario"], ["ro", "Roles"]], d.responsables.map(r => ({ n: r.nombre, u: r.usuario, ro: r.roles })), "Sin responsables asignados.");
-          pb.ui.mdGrid($e, "Tareas del ítem", [["t", "Tarea"], ["h", "Hito"], ["a", "Área"], ["tc", "Técnico"], ["f", "Fecha de terminación"], ["s", "Estado"]],
-            ts.map(x => ({ t: x.codigo + " · " + x.titulo, h: x.hito || "—", a: x.area, tc: x.tecnico, f: pb.fecha(x.fechaTerminacion), s: pry.ESTADO[x.estado] })), "Aún no tiene tareas registradas.");
+          pry.tareasDelItem($("<div>").appendTo($e), ts, "Tareas del ítem");
           pb.ui.mdGrid($e, "Acuerdos de la revisión semanal", [["rv", "Revisión"], ["ac", "Acuerdo"], ["re", "Responsable"], ["fc", "Fecha de cumplimiento"], ["s", "Estado"]],
             d.acuerdos.map(a => ({ rv: pb.fecha(a.fechaRevision), ac: a.descripcion, re: a.responsable, fc: pb.fecha(a.fechaCumplimiento), s: a.estado })), "Sin acuerdos registrados.");
+          $e.append($('<div class="mdtitle">').text("Documentos adjuntos"));
+          pry.adjuntos($("<div>").appendTo($e), { ambito: "Item", token: i.token, editable: false });
           const abierto = ["Completado", "Anulado"].indexOf(i.estado) < 0;
           pb.ui.mdActions($e, [
             { text: "Nueva tarea", icon: "add", type: "default", disabled: !abierto || i.estado === "Borrador" || !pb.can("tareas", "crear"), onClick: () => pry.tareaPopup(i.token, () => lista.recargar()) },
             { text: "Registrar acuerdo semanal", icon: "comment", disabled: !abierto || i.estado === "Borrador" || !pb.can("acuerdos", "crear"), onClick: () => pry.acuerdoPopup(i.token, () => lista.recargar()) },
             { text: "Ver en cronograma", icon: "event", disabled: !pb.can("gantt", "ver"), onClick: () => { location.href = "/Portafolio/Cronograma?item=" + i.token; } }
           ]);
+          const motivo = pry.motivoSinTareas(i.estado);
+          if (motivo) pb.ui.mdNote($e, motivo);
         }
       });
     }
@@ -58,7 +61,7 @@
       const avance = ts.length ? Math.round(ts.filter(t => t.estado === "Completada").length / ts.length * 100) : 0;
       const datos = d ? { codigo: d.codigo, titulo: d.titulo, tipo: d.tipo, responsables: d.responsables.map(r => r.usuarioId), estado: d.estado, avance: avance + " % (" + ts.filter(t => t.estado === "Completada").length + " de " + ts.length + " tareas)", registrado: (d.creadoPor || "—") + " · " + pb.fechaHora(d.fechaRegistro) }
                       : { codigo: "(se asigna al guardar)", titulo: "", tipo: "Proyecto", responsables: [], estado: "Borrador", avance: "—", registrado: pb.sesion.nombre };
-      let editor = null, hitos = d ? d.hitos.map(h => Object.assign({ id: h.hitoId }, h, { fechaInicio: h.fechaInicio ? pb.aFecha(h.fechaInicio) : null, fechaFin: h.fechaFin ? pb.aFecha(h.fechaFin) : null })) : [], gHitos = null;
+      let editor = null, docs = null, hitos = d ? d.hitos.map(h => Object.assign({ id: h.hitoId }, h, { fechaInicio: h.fechaInicio ? pb.aFecha(h.fechaInicio) : null, fechaFin: h.fechaFin ? pb.aFecha(h.fechaFin) : null })) : [], gHitos = null;
       pb.ui.detalle({
         $c, modulo: "Portafolio", titulo: "Proyectos, mejoras y bugs", modo, nombre: d && d.codigo, token: d && d.token, datos,
         soloLectura: modo === "consulta" && !pb.can("proyectos", "editar"),
@@ -77,6 +80,9 @@
           $rc.append('<span class="lbl" id="richLbl">Descripción</span>');
           editor = $("<div>").appendTo($rc).dxHtmlEditor({ value: d ? d.descripcionHtml || "" : "", readOnly: ro, height: 160, elementAttr: { "aria-labelledby": "richLbl" },
             toolbar: { multiline: true, items: ["bold", "italic", "underline", "separator", "bulletList", "orderedList", "separator", "link"] } }).dxHtmlEditor("instance");
+          const $dc = $('<div class="card pad stack">').appendTo($x);
+          $dc.append("<h2>Documentos adjuntos</h2>");
+          docs = pry.adjuntos($("<div>").appendTo($dc), { ambito: "Item", token: d ? d.token : null, editable: !ro });
           // Hitos (opcionales): agrupan tareas en el cronograma
           const $h = $('<div class="card pad stack">').appendTo($x);
           $h.append("<h2>Hitos</h2>").append($('<p class="muted">').text("Opcionales. Agrupan las tareas en el cronograma; las fechas sirven de planificación mientras el hito no tenga tareas."));
@@ -92,15 +98,17 @@
           if (d) {
             const $t = $('<div class="card pad stack">').appendTo($x);
             $t.append("<h2>Tareas del ítem</h2>");
-            pb.ui.mdGrid($t, "", [["t", "Tarea"], ["h", "Hito"], ["a", "Área"], ["tc", "Técnico"], ["f", "Terminación"], ["av", "Avance", "right"], ["s", "Estado"]],
-              ts.map(x => ({ t: x.codigo + " · " + x.titulo, h: x.hito || "—", a: x.area, tc: x.tecnico, f: pb.fecha(x.fechaTerminacion), av: x.avance + " %", s: pry.ESTADO[x.estado] })), "Aún no tiene tareas registradas.");
+            pry.tareasDelItem($("<div>").appendTo($t), ts);
             const acc = [];
             if (pb.can("tareas", "crear") && ["Borrador", "Completado", "Anulado"].indexOf(d.estado) < 0) acc.push({ text: "Nueva tarea", icon: "add", type: "default", onClick: () => pry.tareaPopup(d.token, () => ficha(d.token, modo)) });
             if (pb.can("gantt", "ver")) acc.push({ text: "Ver en cronograma", icon: "event", onClick: () => { location.href = "/Portafolio/Cronograma?item=" + d.token; } });
             if (acc.length) pb.ui.mdActions($t, acc);
+            const motivo = pry.motivoSinTareas(d.estado);
+            if (motivo) pb.ui.mdNote($t, motivo);
           }
         },
         alGuardar: async f => {
+          if (!docs.validar()) return;
           const g = await pb.post(pry.url("GuardarItem", d ? "token=" + d.token : ""), { tipo: f.tipo, titulo: f.titulo, descripcionHtml: editor.option("value") || null, responsableIds: f.responsables, estado: f.estado });
           if (g === undefined) return;
           await gHitos.saveEditData();
@@ -109,6 +117,7 @@
             const r = await pb.post(pry.url("Hitos", "token=" + g.token), { hitos: hs.map(h => ({ hitoId: h.hitoId, nombre: h.nombre, orden: h.orden || 1, inicio: pry.iso(h.fechaInicio), fin: pry.iso(h.fechaFin) })) });
             if (r === undefined) return ficha(g.token, "edicion");
           }
+          if (!await docs.subir(g.token)) return ficha(g.token, "edicion");
           pb.notify("Registro " + g.codigo + " guardado correctamente");
           listado();
         },

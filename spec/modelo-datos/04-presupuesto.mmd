@@ -1,0 +1,97 @@
+erDiagram
+  Area ||--o{ Partida : "lleva presupuesto"
+  Partida ||--o{ Movimiento : origen
+  Partida ||--o{ Movimiento : destino
+  Partida ||--o{ Renovacion : "se paga con"
+  Renovacion ||--o{ Solicitud : "requerimiento de renovación"
+  Partida ||--o{ Solicitud : imputa
+  Solicitud ||--o{ Pago : "se paga en"
+  Pago ||--o{ PagoDistribucion : distribuye
+  Partida ||--o{ PagoDistribucion : "reduce disponible"
+  Solicitud ||--o{ Documento : contrato
+  Pago ||--o{ Documento : "factura y distribución"
+  Area {
+    int AreaId PK
+    varchar Codigo "TI, MKT; no cambia"
+    nvarchar Nombre "único"
+    bit Activa
+  }
+  Partida {
+    int PartidaId PK
+    uniqueidentifier Token
+    varchar Codigo "PRE-año-NN"
+    smallint Anio
+    varchar Area FK "com.Area (Codigo)"
+    nvarchar Rubro "único por año y área"
+    decimal Asignado
+    varchar Estado "Borrador, Activo, Cerrado"
+    int CreadoPorId FK "seg.Usuario"
+    int AprobadoPorId FK "seg.Usuario"
+  }
+  Movimiento {
+    int MovimientoId PK
+    uniqueidentifier Token
+    varchar Codigo "MOV-NNNN calculado"
+    date Fecha
+    varchar Tipo "Reasignación, Incremento, Reducción"
+    int PartidaOrigenId FK
+    int PartidaDestinoId FK
+    decimal Monto
+    nvarchar Motivo
+    varchar Estado "Pendiente, Aprobada, Rechazada, Anulada"
+    nvarchar Comentario
+  }
+  Renovacion {
+    int RenovacionId PK
+    uniqueidentifier Token
+    varchar Codigo "REN-NNNN calculado"
+    nvarchar Servicio
+    nvarchar Proveedor
+    date Vence
+    decimal MontoEstimado
+    bit Presupuestado
+    int PartidaId FK "null si no presupuestado"
+    int DiasAviso "1 a 365, por servicio"
+    varchar Estado "Activo, Requerimiento enviado, Retirado"
+  }
+  Solicitud {
+    int SolicitudId PK
+    uniqueidentifier Token
+    varchar Codigo "SC-NNNN calculado"
+    nvarchar Descripcion
+    nvarchar Area
+    nvarchar Proveedor
+    bit Presupuestado
+    int PartidaId FK "null si no presupuestado"
+    decimal Monto
+    int RenovacionId FK "null si es requerimiento directo"
+    varchar Aprobacion "Pendiente, Aprobada, Rechazada"
+    bit Anulada
+    int SolicitanteId FK "seg.Usuario"
+  }
+  Pago {
+    int PagoId PK
+    uniqueidentifier Token
+    varchar Codigo "PAG-NNNN calculado"
+    int SolicitudId FK
+    nvarchar Proveedor
+    date Fecha
+    decimal Monto
+    varchar Estado "Pendiente, Pagado, Anulado"
+    int PagadoPorId FK "seg.Usuario"
+  }
+  PagoDistribucion {
+    int PagoId PK
+    int PartidaId PK
+    decimal Monto
+  }
+  Documento {
+    int DocumentoId PK
+    uniqueidentifier Token
+    int SolicitudId FK
+    int PagoId FK
+    varchar Tipo "Contrato, Factura, Distribución"
+    nvarchar Nombre
+    bigint Tamano
+    nvarchar Ruta "Blob Storage"
+  }

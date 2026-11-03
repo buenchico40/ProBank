@@ -22,13 +22,20 @@
 - Sin aprobadores, la tarea pasa directo a En curso. Solo se completa una tarea en curso.
 - Los aprobadores solo cambian mientras la tarea está Pendiente. Cada cambio queda en el historial de la tarea.
 - El responsable de un acuerdo puede marcarlo cumplido aunque su rol no tenga la función.
-- Solo se eliminan borradores sin tareas ni revisiones.
-- Los informes de seguimiento (semanales o mensuales) guardan una copia con la bitácora de tareas y los acuerdos del periodo.
+- Solo se eliminan borradores sin tareas ni revisiones; sus documentos adjuntos se quitan con ellos.
+- Un ítem en Borrador no admite tareas ni acuerdos: la pantalla explica por qué el botón está deshabilitado.
+- Ítems y tareas aceptan documentos adjuntos (hasta 20 cada uno) en Blob Storage, cada uno con su descripción obligatoria
+  (máximo 300 caracteres, editable después). Los tipos y el tamaño máximo de cada uno
+  se configuran en Parametrización (de inicio: ítems PDF, Word y Excel hasta 10 MB; tareas zip, sql, PDF y Word hasta 5 MB).
+  El contenido de cada archivo se verifica contra su extensión. En una tarea adjunta su técnico o quien edita tareas.
+- Los informes de seguimiento (semanales o mensuales) se generan con DevExpress Reporting: primero indicadores y gráficos
+  (avance por ítem, acuerdos por estado, movimientos por día y eventos por tipo) y luego el detalle (resumen, bitácora,
+  acuerdos y temas). El PDF se guarda como copia en Blob Storage y se ve o descarga desde la pantalla.
 
 ## Datos
 
 pry.Item, pry.ItemResponsable, pry.Hito, pry.Tarea, pry.TareaAprobador, pry.Aprobacion, pry.TareaEvento, pry.Revision, pry.Acuerdo,
-pry.Informe, pry.Accion, pry.AccionRol. Solo procedimientos almacenados (`<esquema>.usp_<Entidad>_<Accion>`).
+pry.Informe, pry.Accion, pry.AccionRol, pry.Adjunto, pry.ParametroAdjunto. Solo procedimientos almacenados (`<esquema>.usp_<Entidad>_<Accion>`).
 
 ## Pruebas
 

@@ -29,10 +29,8 @@
         if (r) pb.ui.mdGrid($e, "Bitácora y acuerdos del periodo", [["i", "Ítem"], ["b", "Bitácora"], ["ac", "Acuerdos"], ["s", "Estado"]],
           r.map(x => ({ i: x.item, b: x.tareasConMovimiento + " tarea(s) con movimiento · avance " + x.avance + " %", ac: x.acuerdos + (x.cumplidos ? " (" + x.cumplidos + " cumplido)" : "") + (x.vencidos ? " · " + x.vencidos + " vencido(s)" : ""), s: x.estado })),
           "Sin actividad en el periodo.");
-        const acc = [];
-        if (pb.can("informes", "generar")) acc.push({ text: "Generar informe", icon: "textdocument", type: "default", onClick: () => generar(i) });
-        if (i.estado === "Completado") acc.push({ text: "Ver informe", icon: "find", onClick: () => ver(i) });
-        if (acc.length) pb.ui.mdActions($e, acc);
+        // Generar arma el PDF y lo abre; uno ya generado se vuelve a ver con el enlace de su código
+        if (pb.can("informes", "generar")) pb.ui.mdActions($e, [{ text: "Generar informe", icon: "textdocument", type: "default", onClick: () => generar(i) }]);
       }
     });
 
@@ -65,25 +63,20 @@
       pb.notify(r); await lista.recargar(); ver(i);
     }
 
+    // El informe es un PDF de DevExpress Reporting (gráficos y luego el detalle) que la API guarda al generarlo
     async function ver(i) {
       const d = await pb.get(pry.url("Informe", "id=" + i.informeId));
-      if (!d || !d.contenidoHtml) return;
+      if (!d) return;
+      if (!d.tienePdf) return pb.notify("Genere el informe " + d.codigo + " para obtener su PDF", "info");
+      const pdf = q => pry.url("InformePdf", "id=" + d.informeId + q);
       pb.ui.openPopup(d.codigo + " · " + periodo(d), $f => {
-        const $main = $('<div class="vw-main">').appendTo($f);
-        const $tb = $('<div class="vw-toolbar">').appendTo($main);
-        pb.ui.button($("<div>").appendTo($tb), { text: "Imprimir o guardar PDF", icon: "print", onClick: () => imprimir(d) });
-        $tb.append('<span class="vw-pg">Página 1 de 1</span>');
-        // El HTML lo arma la API codificando cada texto; se muestra tal cual en el visor.
-        $('<div class="vw-page">').appendTo($main).html(d.contenidoHtml);
+        $("<iframe>").attr({ src: pdf(""), title: "Informe " + d.codigo })
+          .css({ width: "100%", height: "min(72vh, 760px)", border: "1px solid var(--line)", borderRadius: "8px", background: "#fff" }).appendTo($f);
         return null;
-      }, () => true, "Cerrar", 980);
-    }
-
-    function imprimir(d) {
-      const w = window.open("", "_blank");
-      if (!w) return pb.notify("Permita las ventanas emergentes para imprimir", "warning");
-      w.document.write("<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'><title>" + pb.esc(d.codigo) + "</title><link rel='stylesheet' href='/css/site.css'></head><body style='background:#fff'><div class='vw-page'>" + d.contenidoHtml + "</div></body></html>");
-      w.document.close(); w.focus(); setTimeout(() => w.print(), 400);
+      }, () => true, "Cerrar", 1100, { extra: [
+        { text: "Descargar PDF", icon: "download", onClick: () => { window.location.href = pdf("&descargar=true"); } },
+        { text: "Abrir en otra pestaña", icon: "export", onClick: () => window.open(pdf(""), "_blank") }
+      ] });
     }
   });
 </script>

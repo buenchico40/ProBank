@@ -1,0 +1,91 @@
+erDiagram
+  GrupoAcceso ||--o{ GrupoMiembro : integra
+  GrupoAcceso ||--o{ CuentaTecnica : "puede ver"
+  GrupoAcceso ||--o{ Secreto : "puede ver"
+  Certificado ||--o{ CertificadoRenovacion : renovaciones
+  CuentaTecnica ||--o{ CredencialVersion : versiones
+  Secreto ||--o{ CredencialVersion : versiones
+  CuentaTecnica ||--o{ CredencialAcceso : consultada
+  Secreto ||--o{ CredencialAcceso : consultado
+  GrupoAcceso {
+    int GrupoId PK
+    uniqueidentifier Token
+    varchar Codigo "GRP-NN"
+    nvarchar Nombre
+    nvarchar Descripcion
+    varchar Estado "Activo, Inactivo"
+  }
+  GrupoMiembro {
+    int GrupoId PK,FK
+    int UsuarioId PK,FK "seg.Usuario"
+    datetime2 Desde
+  }
+  Certificado {
+    int CertificadoId PK
+    uniqueidentifier Token
+    varchar Codigo "CER-NNNN"
+    nvarchar NombreComun
+    nvarchar Tipo "SSL/TLS, firma de código, cliente, SAML"
+    nvarchar Emisor
+    date Vence
+    nvarchar Almacen
+    nvarchar Responsable
+    int DiasAviso
+    varchar Huella "SHA-1 o SHA-256"
+    bit Activo
+  }
+  CertificadoRenovacion {
+    int RenovacionId PK
+    int CertificadoId FK
+    datetime2 Fecha
+    date VenceAnterior
+    date VenceNuevo
+    varchar HuellaNueva
+    int UsuarioId FK "seg.Usuario"
+  }
+  CuentaTecnica {
+    int CuentaId PK
+    uniqueidentifier Token
+    nvarchar Nombre
+    nvarchar Tipo "Entra ID, AD on-premise, base de datos, identidad administrada"
+    nvarchar Sistema
+    nvarchar Responsable
+    int GrupoId FK "NULL en identidad administrada"
+    date ProximaRotacion
+    date UltimaRotacion
+    bit Activo
+  }
+  Secreto {
+    int SecretoId PK
+    uniqueidentifier Token
+    nvarchar Nombre
+    nvarchar Tipo "cadena de conexión, clave de API..."
+    nvarchar Almacen
+    nvarchar Sistema
+    int GrupoId FK
+    int DiasAviso
+    date Expira
+    date UltimaRotacion
+    bit Activo
+  }
+  CredencialVersion {
+    bigint VersionId PK
+    int CuentaId FK "o SecretoId"
+    int SecretoId FK
+    int Version
+    nvarchar Valor "Always Encrypted RANDOMIZED; solo la vigente"
+    datetime2 Fecha
+    date Vence
+    int UsuarioId FK "seg.Usuario"
+    nvarchar Nota
+  }
+  CredencialAcceso {
+    bigint AccesoId PK
+    int CuentaId FK "o SecretoId"
+    int SecretoId FK
+    int Version
+    varchar Accion "Mostrar, Copiar"
+    int UsuarioId FK "seg.Usuario"
+    datetime2 Fecha
+    varchar Ip
+  }

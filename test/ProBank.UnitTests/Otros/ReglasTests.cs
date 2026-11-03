@@ -22,7 +22,7 @@ public sealed class ReglasTests
     [Fact(DisplayName = "SQL-07 · mensual sin día = último día del mes")]
     public void ProgramacionMensual()
     {
-        var p = new Programacion(1, "QRY-001", 1, Frecuencia.Mensual, new TimeOnly(7, 0), [], null, "xlsx", ["a@banco.ec"], new Dictionary<string, string?>(), 1);
+        var p = new Programacion(1, "PRG-0001", "QRY-001", "CNX-001", Frecuencia.Mensual, new TimeOnly(7, 0), [], null, "xlsx", ["a@banco.ec"], new Dictionary<string, string?>(), 1);
         Assert.Equal(new DateTime(2026, 10, 31, 7, 0, 0), CalendarioProgramacion.Proxima(p, new DateTime(2026, 10, 30, 9, 0, 0)));
         Assert.Equal(new DateTime(2026, 11, 30, 7, 0, 0), CalendarioProgramacion.Proxima(p, new DateTime(2026, 10, 31, 8, 0, 0)));
     }

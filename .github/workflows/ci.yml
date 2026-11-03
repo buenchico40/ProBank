@@ -6,11 +6,19 @@ on:
 jobs:
   build-test:
     runs-on: ubuntu-latest
+    env:
+      # Licencia de DevExpress (contenido de DevExpress_License.txt): la exige la compilación de DevExpress Reporting
+      DevExpress_License: ${{ secrets.DEVEXPRESS_LICENSE }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+      # Los paquetes de DevExpress no están en nuget.org: feed personal https://nuget.devexpress.com/<clave>/api/v3/index.json
+      - name: Feed de DevExpress
+        env:
+          FEED: ${{ secrets.DEVEXPRESS_NUGET_FEED }}
+        run: dotnet nuget add source "$FEED" --name DevExpress
       - run: dotnet restore src/ProBank.sln
       - run: dotnet build src/ProBank.sln --no-restore -c Release
       - run: dotnet build src/ProBank.Database/ProBank.Database.sqlproj -c Release

@@ -17,9 +17,14 @@ if (-not (Get-Command sqlpackage -ErrorAction SilentlyContinue)) {
 
 sqllocaldb start $instancia | Out-Null
 dotnet build src/ProBank.Database/ProBank.Database.sqlproj -nologo -v q
+# Always Encrypted (Bóveda): en local la llave maestra es un certificado de este usuario de Windows. Va antes de publicar.
+$env:PROBANK_SQL = $cs
+try { dotnet run --project tools/ProBank.Setup -- llaves; if ($LASTEXITCODE -ne 0) { throw "No se pudieron crear las llaves de Always Encrypted" } }
+finally { Remove-Item Env:PROBANK_SQL -ErrorAction SilentlyContinue }
 # El proyecto apunta a Azure SQL; LocalDB es SQL Server, por eso se permite la plataforma distinta.
+# Las llaves de Always Encrypted son de cada ambiente: el .dacpac no las toca.
 sqlpackage /Action:Publish /SourceFile:src/ProBank.Database/bin/Debug/ProBank.Database.dacpac `
-    /TargetConnectionString:$cs /p:AllowIncompatiblePlatform=True /Quiet:True
+    /TargetConnectionString:$cs /p:AllowIncompatiblePlatform=True "/p:ExcludeObjectTypes=ColumnMasterKeys;ColumnEncryptionKeys" /Quiet:True
 
 Write-Host "Creando usuarios de prueba..."
 $env:PROBANK_SQL = $cs

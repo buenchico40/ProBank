@@ -11,6 +11,8 @@ public sealed record EventoTareaDto(DateTime Fecha, string Evento, string? Detal
 
 public sealed record CrearTareaRequest(Guid ItemToken, int? HitoId, string Titulo, string Area, int TecnicoId, int Orden,
     DateOnly FechaInicio, DateOnly FechaTerminacion, IReadOnlyList<int> AprobadorIds, string? DescripcionHtml);
+/// <summary>Tarea creada: el token sirve para adjuntarle documentos enseguida.</summary>
+public sealed record TareaCreadaDto(Guid Token, string Codigo);
 
 public sealed record ActualizarTareaRequest(int? HitoId, string Titulo, string Area, int TecnicoId, int Orden, DateOnly FechaInicio,
     DateOnly FechaTerminacion, int Avance, IReadOnlyList<int>? AprobadorIds, string? DescripcionHtml);

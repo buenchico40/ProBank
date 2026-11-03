@@ -22,9 +22,13 @@ internal sealed class KeyVaultSecretProvider(SecretClient client) : ISecretProvi
     }
 }
 
-/// <summary>Sin KeyVault:Uri configurado (desarrollo local sin Azure): falla solo si se intenta leer un secreto.</summary>
-internal sealed class SinKeyVault : ISecretProvider
+/// <summary>
+/// Sin KeyVault:Uri configurado (desarrollo local sin Azure): lee el secreto de la configuración (Secretos:&lt;nombre&gt;, en
+/// user-secrets, nunca en appsettings); si no está, falla indicando qué configurar.
+/// </summary>
+internal sealed class SinKeyVault(Microsoft.Extensions.Configuration.IConfiguration config) : ISecretProvider
 {
     public Task<string> Obtener(string nombre, CancellationToken ct) =>
-        throw new InvalidOperationException("Configura KeyVault:Uri para leer el secreto " + nombre + ".");
+        config["Secretos:" + nombre] is { Length: > 0 } valor ? Task.FromResult(valor)
+            : throw new InvalidOperationException($"El secreto {nombre} no está disponible: configure KeyVault:Uri (o, en desarrollo, Secretos:{nombre} en user-secrets).");
 }

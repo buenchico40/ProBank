@@ -114,6 +114,7 @@ module "apps" {
     "WEBSITE_RUN_FROM_PACKAGE_BLOB_MI_RESOURCE_ID" = "SystemAssigned"
     "Jwt__Clave"                                   = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.jwt.versionless_id})"
     "KeyVault__Uri"                                = module.key_vault.uri
+    "Almacen__BlobEndpoint"                        = module.storage.blob_endpoint # documentos adjuntos (contenedor adjuntos)
     "Correo__BuzonServicio"                        = var.buzon_servicio
     "ConnectionStrings__ProBank"                   = "Server=tcp:${module.sql.servidor_fqdn},1433;Database=${module.sql.base};Authentication=Active Directory Managed Identity;Encrypt=True;Column Encryption Setting=Enabled"
   }
@@ -163,3 +164,4 @@ output "sql_base" { value = module.sql.base }
 output "api_nombre" { value = module.apps.api_nombre }
 output "web_nombre" { value = module.apps.web_nombre }
 output "grupo" { value = azurerm_resource_group.this.name }
+output "cmk_id" { value = module.key_vault.cmk_id } # llave maestra de Always Encrypted (ProBank.Setup llaves)

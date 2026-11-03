@@ -1,5 +1,8 @@
 @model ProBank.Web.Controllers.IngresoVista
-@{ Layout = null; }
+@{
+    Layout = null;
+    var promos = Model.Promociones;
+}
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -9,7 +12,17 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
-<body class="ingreso">
+<body class="ingreso @(promos.Count > 0 ? "con-fondo" : "")">
+  @if (promos.Count > 0)
+  {
+    @* MKT-01: imágenes vigentes de Marketing para esta pantalla, de fondo a pantalla completa; rotan cada 7 s *@
+    <div class="ingreso-fondo" aria-hidden="true">
+      @for (var i = 0; i < promos.Count; i++)
+      {
+        <div class="ingreso-capa @(i == 0 ? "activa" : "")" style="background-image:url('@Url.Action("Promocion", new { token = promos[i].Token })')"></div>
+      }
+    </div>
+  }
   <main class="card ingreso-caja">
     <span class="logo">ProBank</span>
     <p class="ingreso-sub">Ingresa con tu usuario y contraseña.</p>
@@ -24,5 +37,39 @@
       <button type="submit">Ingresar</button>
     </form>
   </main>
+  @if (promos.Count > 0)
+  {
+    @* Texto de la promoción en su propia sección centrada (el fondo es decorativo; aquí va lo que se lee) *@
+    <section class="ingreso-texto" aria-label="Novedades del banco">
+      @for (var i = 0; i < promos.Count; i++)
+      {
+        var p = promos[i];
+        <div class="ingreso-msg" hidden="@(i > 0)">
+          <strong>@p.Titulo</strong>
+          @if (p.TextoAlternativo is not null && p.TextoAlternativo != p.Titulo) { <span>@p.TextoAlternativo</span> }
+          @if (p.Enlace is not null) { <a href="@p.Enlace" target="_blank" rel="noopener noreferrer">Conocer más</a> }
+        </div>
+      }
+      @if (promos.Count > 1)
+      {
+        <div class="ingreso-puntos" aria-hidden="true">@for (var i = 0; i < promos.Count; i++) { <i class="@(i == 0 ? "activa" : "")"></i> }</div>
+      }
+    </section>
+  }
+  @if (promos.Count > 1)
+  {
+    <script>
+      (function () {
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+        const capas = document.querySelectorAll(".ingreso-capa"), msgs = document.querySelectorAll(".ingreso-msg"), puntos = document.querySelectorAll(".ingreso-puntos i");
+        let i = 0;
+        setInterval(() => {
+          capas[i].classList.remove("activa"); msgs[i].hidden = true; puntos[i].classList.remove("activa");
+          i = (i + 1) % capas.length;
+          capas[i].classList.add("activa"); msgs[i].hidden = false; puntos[i].classList.add("activa");
+        }, 7000);
+      })();
+    </script>
+  }
 </body>
 </html>

@@ -1,4 +1,4 @@
--- Solo se eliminan borradores sin tareas ni revisiones (PRY-09: «Eliminar borradores»).
+-- Solo se eliminan borradores sin tareas ni revisiones (PRY-09: «Eliminar borradores»). Sus documentos adjuntos se quitan con él.
 CREATE PROCEDURE pry.usp_Item_Eliminar
     @Token UNIQUEIDENTIFIER, @ActorId INT, @RolActivo VARCHAR(60), @Ip VARCHAR(45)
 AS
@@ -15,6 +15,8 @@ BEGIN
     IF EXISTS (SELECT 1 FROM pry.Tarea WHERE ItemId = @ItemId) OR EXISTS (SELECT 1 FROM pry.Revision WHERE ItemId = @ItemId)
         THROW 50422, N'El borrador ya tiene tareas o acuerdos; cambie su estado a Anulado.', 1;
     BEGIN TRAN;
+    -- Devuelve las rutas de sus documentos para borrarlos de Blob Storage
+    DELETE pry.Adjunto OUTPUT deleted.Ruta WHERE ItemId = @ItemId;
     DELETE pry.Hito WHERE ItemId = @ItemId;
     DELETE pry.ItemResponsable WHERE ItemId = @ItemId;
     DELETE pry.Item WHERE ItemId = @ItemId;

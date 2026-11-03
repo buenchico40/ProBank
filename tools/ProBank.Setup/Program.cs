@@ -5,12 +5,14 @@ using ProBank.Domain.Common;
 // ProBank.Setup: crea el administrador local inicial o un usuario con contraseña y roles.
 // Uso: dotnet run --project tools/ProBank.Setup -- admin   --usuario admin.sistema --ip 10.20.30.45
 //      dotnet run --project tools/ProBank.Setup -- usuario --usuario ana.perez --nombre "Ana Pérez" --roles "Gerencia de TI,Consulta"
+//      dotnet run --project tools/ProBank.Setup -- llaves [--keyvault <id de la llave>]   (Always Encrypted; antes de publicar la base)
 //      La cadena de conexión se lee de PROBANK_SQL. La clave se pide por consola o, para scripts, de PROBANK_CLAVE.
 var comando = args.Length > 0 ? args[0] : "";
-if (comando is not ("admin" or "usuario"))
+if (comando is not ("admin" or "usuario" or "llaves"))
 {
     Console.WriteLine("Uso: ProBank.Setup admin --usuario <usuario> --ip <ip-permitida> [--nombre <nombre>]");
     Console.WriteLine("     ProBank.Setup usuario --usuario <usuario> --nombre <nombre> --roles <rol1,rol2> [--correo <correo>]");
+    Console.WriteLine("     ProBank.Setup llaves [--keyvault <id de la llave en Key Vault>]  (sin --keyvault: certificado local)");
     return 1;
 }
 string? Opcional(string n)
@@ -20,8 +22,10 @@ string? Opcional(string n)
 }
 string Arg(string n, string? def = null) => Opcional(n) ?? def ?? throw new ArgumentException($"Falta {n}");
 
-var usuario = Arg("--usuario");
 var cs = Environment.GetEnvironmentVariable("PROBANK_SQL") ?? throw new InvalidOperationException("Define PROBANK_SQL.");
+if (comando == "llaves") return await Llaves.Crear(cs, Opcional("--keyvault"));
+
+var usuario = Arg("--usuario");
 
 var clave = Environment.GetEnvironmentVariable("PROBANK_CLAVE");
 if (string.IsNullOrEmpty(clave))

@@ -1,6 +1,6 @@
 # Correo con Microsoft Graph
 
-- **Estado:** Aceptada
+- **Estado:** Reemplazada por [0011](0011-correo-smtp.md)
 - **Fecha:** 2026-10
 
 ## Decisión

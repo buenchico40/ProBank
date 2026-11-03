@@ -1,7 +1,7 @@
 # ProBank
 
-Sistema modular para los procesos de apoyo del banco: Seguridad, Coactivas, Portafolio, Compras y pagos TI,
-Cumplimiento y auditoría, Certificados y secretos, Marketing, Consultas dinámicas, Versiones de aplicaciones
+Sistema modular para los procesos de apoyo del banco: Seguridad, Coactivas, Portafolio, Presupuesto,
+Cumplimiento y auditoría, Bóveda, Marketing, Consultas dinámicas, Versiones de aplicaciones
 y componentes, y Reportes.
 
 ## Abrir en Visual Studio Code
@@ -19,6 +19,7 @@ y componentes, y Reportes.
 | Terraform | 1.9 o superior |
 | Azure CLI | 2.60 o superior |
 | SQL Server | 2022 local, en contenedor o Azure SQL |
+| DevExpress (.NET) | 26.1 con su licencia: paquetes de Reporting desde el instalador o el feed de DevExpress |
 
 ## Primeros pasos
 
@@ -51,7 +52,8 @@ pwsh scripts/local/setup-local.ps1   # LocalDB + .dacpac + usuarios de prueba + 
 
 - Usuarios de prueba: `dev.local` (Administrador, Gerencia de TI, Consulta), `tecnico.local` y `aprobador.local`;
   todos con la clave `ProBank-Local-2026!` (cámbiala con `-Clave`). Solo existen en LocalDB.
-- En local no se envía correo (Graph) ni hay Key Vault ni Application Insights.
+- En local no se envía correo (Graph) ni hay Key Vault ni Application Insights. La llave maestra de Always Encrypted (Bóveda)
+  es un certificado del usuario de Windows (`CN=ProBank Always Encrypted (local)`) que crea `ProBank.Setup llaves`.
 
 ## Usuarios
 
@@ -94,10 +96,13 @@ el despliegue, publica el `.dacpac`, da a la identidad de la API `EXECUTE` sobre
 | Diseño (cabecera, menú en acordeón, pie, Panel, grillas y fichas) | Igual al prototipo, con DevExtreme (`wwwroot/js/probank.js`, `site.css`) |
 | Seguridad (usuarios, roles y permisos, parámetros de acceso, auditoría, perfil) | De punta a punta; permisos por rol aplicados en el menú, la API y los SP |
 | Coactivas (oficios, coactivas, bloqueos, levantamientos, transferencias, carga masiva, coactivas por cliente) | De punta a punta |
-| Portafolio (ítems, hitos, tareas, aprobaciones, cronograma Gantt, acuerdos semanales, informes, parametrización) | De punta a punta |
-| Consultas dinámicas (ejecutar SP, variables, auditoría, programador y correo con Graph) | Back-end completo; vista de ejecución básica |
+| Portafolio (ítems, hitos, tareas, aprobaciones, cronograma Gantt, acuerdos semanales, informes con DevExpress Reporting, documentos adjuntos, parametrización) | De punta a punta |
+| Marketing (imágenes promocionales del Panel y del inicio de sesión, comunicados estructurados) | De punta a punta |
+| Presupuesto por área, con áreas configurables, inicialmente TI (partidas y ejecución, ajustes y movimientos, renovaciones con aviso, solicitudes de compra, pagos con distribución, contratos y facturas, reporte PDF de servicios, pagos y presupuestado) | De punta a punta |
+| Consultas dinámicas (bases de datos con secreto en Key Vault, catálogo con definición leída del SP, parámetros fijos o variables, aprobaciones, resultados y exportación en 5 formatos, auditoría, envíos programados por correo) | De punta a punta (pendiente: enlace que vence para archivos grandes y grupos de Entra ID) |
+| Configuración (parámetros generales por categoría: correo por Microsoft 365 o SMTP con prueba de envío, conservación de resultados y adjuntos de Consultas dinámicas; cambios auditados) | De punta a punta |
 | Demás módulos | Esquema de base de datos y página de inicio del área; reglas en `spec/modulos/` y pantallas en `prototype/` |
-| Pruebas unitarias | Seguridad, claves, coactivas y carga masiva, tareas e informes, aprobación, variables de fecha, versiones y programación |
+| Pruebas unitarias | Seguridad, claves, coactivas y carga masiva, tareas e informes, adjuntos, marketing, presupuesto TI, aprobación, variables de fecha, versiones y programación |
 | Playwright | 8 pruebas pasan contra la maqueta (`--project=prototipo`); el resto queda como `test.fixme` por requisito |
 | Terraform | Módulos y ambientes dev, qa y prod |
 
@@ -121,4 +126,16 @@ pwsh scripts/licencia-devextreme.ps1 [-Archivo <DevExpress_License.txt>] -Ambien
 ```
 
 Los despliegues siguientes (`desplegar.ps1`) conservan la licencia ya configurada en la Web App.
+
+## DevExpress Reporting
+
+El informe de seguimiento de Portafolio es un reporte de DevExpress Reporting (XtraReports) que la API exporta a PDF
+(`src/ProBank.Infrastructure/Reportes`). Los paquetes `DevExpress.Reporting.Core` y `DevExpress.Drawing.Skia` (para
+App Service Linux) no están en nuget.org y su compilación valida la licencia de DevExpress .NET:
+
+- **Local:** el instalador de DevExpress 26.1 registra su feed local y deja `%AppData%\DevExpress\DevExpress_License.txt`.
+- **GitHub Actions:** secretos `DEVEXPRESS_NUGET_FEED` (`https://nuget.devexpress.com/<clave>/api/v3/index.json`) y
+  `DEVEXPRESS_LICENSE` (contenido de `DevExpress_License.txt`), que usan `ci.yml` y `deploy.yml`.
+
+El visor web de DevExpress Reporting 26.1 exige DevExtreme 26.1; mientras la Web use 25.2 el informe se muestra como PDF.
 # ProBank

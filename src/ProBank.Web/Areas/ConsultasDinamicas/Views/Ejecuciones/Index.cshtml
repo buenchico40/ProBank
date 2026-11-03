@@ -1,0 +1,99 @@
+@{ ViewData["Title"] = "Ejecuciones y aprobaciones"; ViewData["Opcion"] = "ejecuciones"; }
+@section Scripts {
+<script src="~/js/consultas.js" asp-append-version="true"></script>
+<script>
+  // SQL-03, SQL-05 y SQL-06: las ejecuciones que solicitó y las que le toca aprobar. Con aprobadores, aprueban todos (en cualquier
+  // orden) y luego el solicitante la ejecuta; un rechazo la cierra. Los resultados los ve y exporta solo quien la solicitó.
+  pb.listo.then(() => {
+    const $c = $("#content"), url = cq.url;
+    let lista = null, todas = [], filtro = "Todas";
+    const FILTROS = ["Todas", "Mis solicitudes", "Por aprobar", "Pendientes de aprobación"];
+    const cod = e => encodeURIComponent(e.codigo);
+
+    function listado() {
+      $c.empty();
+      lista = pb.ui.grid({
+        $c, modulo: "Consultas dinámicas", titulo: "Ejecuciones y aprobaciones", opcion: "ejecuciones", clave: "codigo",
+        cargar: async () => {
+          const r = await pb.get(url("Ejecuciones"));
+          if (r === undefined) return r;
+          todas = r;
+          return filtrar();
+        },
+        filtros: [{ location: "before", widget: "dxSelectBox", options: { items: FILTROS, value: filtro, width: 230, inputAttr: { "aria-label": "Filtrar ejecuciones" },
+          onValueChanged: e => { filtro = e.value; lista.grid().option("dataSource", filtrar()); } } }],
+        columnas: [
+          { campo: "codigo", titulo: "Ejecución" }, { campo: "consultaCodigo", titulo: "Consulta", valor: e => e.consultaCodigo + " · " + e.consultaNombre },
+          { campo: "base", titulo: "Base de datos" }, { campo: "parametros", titulo: "Parámetros" },
+          { campo: "solicitadaPor", titulo: "Solicitada por", valor: e => e.programada ? e.solicitadaPor + " (programada)" : e.solicitadaPor },
+          { campo: "fecha", titulo: "Fecha", formato: "fechaHora" },
+          { campo: "aprobadores", titulo: "Aprobaciones", valor: e => e.aprobadores ? e.aprobadas + " de " + e.aprobadores : "—" },
+          { campo: "filas", titulo: "Filas", valor: e => e.filas == null ? "—" : e.filas.toLocaleString("es-EC") },
+          { campo: "estado", titulo: "Estado", pill: true }
+        ],
+        botones: [
+          { text: "Ejecutar consulta", icon: "runner", type: "default", accion: "crear", onClick: () => cq.ejecutar(null, () => lista.recargar()) },
+          { text: "Ver resultados", icon: "smalliconslayout", fila: true, onClick: verOEjecutar },
+          { text: "Aprobar", icon: "check", accion: "aprobar", fila: true, onClick: e => resolver(e, true) },
+          { text: "Rechazar", icon: "close", accion: "aprobar", fila: true, onClick: e => resolver(e, false) }
+        ],
+        alAbrir: e => lista.grid().expandRow(e.codigo),
+        detalle: async ($e, e) => {
+          const d = await pb.get(url("Ejecucion", "codigo=" + cod(e)));
+          if (!d) return;
+          pb.ui.mdHead($e, [d.codigo, d.consultaCodigo + " · " + d.consultaNombre, "Base: " + d.base, "Solicitada por " + d.solicitadaPor + " el " + pb.fechaHora(d.fecha),
+            d.filas != null ? d.filas.toLocaleString("es-EC") + " filas" + (d.truncado ? " (truncado)" : "") : ""].filter(Boolean), d.estado);
+          pb.ui.mdNote($e, "Parámetros: " + (d.parametros || "sin parámetros") + (d.mensaje ? ". Motivo: " + d.mensaje : ""));
+          if (d.aprobaciones.length) pb.ui.mdGrid($e, "Aprobadores (" + d.aprobaciones.filter(a => a.decision === "Aprobada").length + " de " + d.aprobaciones.length + ")",
+            [["a", "Aprobador"], ["d", "Decisión"], ["f", "Fecha"], ["c", "Comentario"]],
+            d.aprobaciones.map(a => ({ a: a.aprobador, d: a.decision || "Pendiente", f: a.fecha ? pb.fechaHora(a.fecha) : "—", c: a.comentario || "—" })));
+          else pb.ui.mdNote($e, d.programada ? "Ejecución programada: corre sin aprobación." : "La consulta no requiere aprobación: se ejecutó al solicitarla.");
+          pb.ui.mdGrid($e, "Bitácora de la ejecución", [["f", "Fecha y hora"], ["u", "Usuario"], ["ev", "Evento"], ["dt", "Detalle"], ["n", "Filas"], ["s", "Resultado"]],
+            d.eventos.map(v => ({ f: pb.fechaHora(v.fecha), u: v.usuario, ev: v.evento, dt: v.detalle || "—", n: v.filas == null ? "—" : v.filas, s: v.resultado })), "Sin eventos.");
+          const acc = [];
+          if (d.esMia && d.tieneResultado) acc.push({ text: "Ver resultados y exportar", icon: "smalliconslayout", type: "default", onClick: () => cq.verResultado(d.codigo, d.consultaCodigo + " · " + d.consultaNombre) });
+          if (d.esMia && d.estado === "Aprobada") acc.push({ text: "Ejecutar y ver resultados", icon: "runner", type: "default", onClick: () => ejecutarAprobada(d) });
+          if (d.meToca && pb.can("ejecuciones", "aprobar")) acc.push({ text: "Aprobar", icon: "check", onClick: () => resolver(d, true) }, { text: "Rechazar", icon: "close", onClick: () => resolver(d, false) });
+          if (acc.length) pb.ui.mdActions($e, acc);
+        }
+      });
+    }
+
+    function filtrar() {
+      return todas.filter(e => filtro === "Todas" || (filtro === "Mis solicitudes" && e.esMia) || (filtro === "Por aprobar" && e.meToca)
+        || (filtro === "Pendientes de aprobación" && e.estado === "Pendiente de aprobación"));
+    }
+
+    function verOEjecutar(e) {
+      if (!e.esMia) return pb.notify("Los resultados los ve solo quien solicitó la ejecución", "warning");
+      if (e.tieneResultado) return cq.verResultado(e.codigo, e.consultaCodigo + " · " + e.consultaNombre);
+      if (e.estado === "Aprobada") return ejecutarAprobada(e);
+      pb.notify(e.estado === "Pendiente de aprobación" ? "La ejecución " + e.codigo + " aún espera aprobaciones" : "La ejecución " + e.codigo + " está " + e.estado.toLowerCase() + ": no tiene resultados", "warning");
+    }
+
+    async function ejecutarAprobada(e) {
+      const r = await pb.post(url("EjecutarAprobada", "codigo=" + cod(e)));
+      lista.recargar();
+      if (r) cq.resultados(r, e.consultaCodigo + " · " + e.consultaNombre);
+    }
+
+    function resolver(e, aprobar) {
+      if (e.estado !== "Pendiente de aprobación") return pb.notify("Solo se resuelven ejecuciones pendientes de aprobación", "warning");
+      if (e.esMia) return pb.notify("No puede aprobar una ejecución que usted solicitó", "warning");
+      const data = { comentario: "" };
+      pb.ui.openPopup((aprobar ? "Aprobar " : "Rechazar ") + e.codigo, $f => {
+        $f.append($('<p class="muted" style="margin:0 0 8px">').text((e.consultaCodigo + " · " + e.consultaNombre) + " · solicitada por " + e.solicitadaPor + ". Parámetros: " + (e.parametros || "sin parámetros")));
+        return $("<div>").appendTo($f).dxForm({ formData: data, labelLocation: "top", items: [
+          { dataField: "comentario", label: { text: aprobar ? "Comentario (opcional)" : "Motivo del rechazo" }, isRequired: !aprobar, editorType: "dxTextArea", editorOptions: { maxLength: 1000, height: 90 } }] }).dxForm("instance");
+      }, async f => {
+        if (!f.validate().isValid) return false;
+        const r = await pb.post(url("Resolver", "codigo=" + cod(e)), { aprobar, comentario: data.comentario });
+        if (r === undefined) return false;
+        pb.notify(r); lista.recargar();
+      }, aprobar ? "Aprobar" : "Rechazar", 520, { icono: aprobar ? "check" : "close" });
+    }
+
+    listado();
+  });
+</script>
+}

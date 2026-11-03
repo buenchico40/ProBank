@@ -1,0 +1,84 @@
+@{ ViewData["Title"] = "Grupos de acceso"; ViewData["Opcion"] = "grupos"; }
+@section Scripts {
+<script src="~/js/boveda.js" asp-append-version="true"></script>
+<script>
+  // CRE-02: grupos de acceso de la Bóveda. Solo sus miembros ven, copian y cambian las credenciales asignadas al grupo;
+  // cada alta o baja de miembros queda en la auditoría. Un grupo con credenciales activas no se desactiva.
+  pb.listo.then(() => {
+    const $c = $("#content"), url = boveda.url;
+    let lista = null, usuarios = null;
+    const cargarUsuarios = async () => usuarios || (usuarios = (await pb.get(url("Usuarios"))) || []);
+
+    function listado() {
+      $c.empty();
+      lista = pb.ui.grid({
+        $c, modulo: "Bóveda", titulo: "Grupos de acceso", opcion: "grupos", clave: "token",
+        cargar: () => pb.get(url("Grupos")),
+        columnas: [
+          { campo: "codigo", titulo: "Grupo" }, { campo: "nombre", titulo: "Nombre" }, { campo: "descripcion", titulo: "Descripción" },
+          { campo: "miembros", titulo: "Miembros" }, { campo: "credenciales", titulo: "Credenciales" },
+          { campo: "esMiembro", titulo: "Soy miembro", valor: g => g.esMiembro ? "Sí" : "No", pill: true }, { campo: "estado", titulo: "Estado", pill: true }
+        ],
+        anulada: g => g.estado === "Inactivo",
+        botones: [
+          { text: "Nuevo", icon: "add", type: "default", accion: "crear", onClick: () => ficha(null, "nuevo") },
+          { text: "Editar", icon: "edit", accion: "editar", fila: true, onClick: g => ficha(g.token, "edicion") }
+        ],
+        alAbrir: g => ficha(g.token, "consulta"),
+        detalle: async ($e, g) => {
+          pb.ui.mdHead($e, [g.codigo, g.nombre, g.descripcion || "", g.miembros + (g.miembros === 1 ? " miembro" : " miembros")].filter(Boolean), g.estado);
+          const d = await pb.get(url("DetalleGrupo", "token=" + g.token));
+          if (!d) return;
+          pb.ui.mdGrid($e, "Miembros", [["u", "Usuario"], ["n", "Nombre"], ["ro", "Roles"], ["d", "Desde"]],
+            d.miembros.map(m => ({ u: m.usuario, n: m.nombre + (m.estado !== "Activo" ? " (" + m.estado.toLowerCase() + ")" : ""), ro: m.roles || "—", d: pb.fecha(m.desde) })), "El grupo no tiene miembros.");
+          pb.ui.mdGrid($e, "Credenciales del grupo", [["c", "Credencial"], ["t", "Tipo"], ["s", "Sistema"], ["e", "Estado"]],
+            d.credenciales.map(x => ({ c: x.nombre, t: x.tipo, s: x.sistema, e: x.activo ? "Activo" : "Inactivo" })), "Sin credenciales asignadas.");
+          if (pb.can("grupos", "editar")) pb.ui.mdActions($e, [{ text: "Editar miembros", icon: "group", onClick: () => ficha(g.token, "edicion") }]);
+        }
+      });
+    }
+
+    async function ficha(token, modo) {
+      const [g, d, us] = await Promise.all([token ? pb.get(url("Grupo", "token=" + token)) : null, token ? pb.get(url("DetalleGrupo", "token=" + token)) : null, cargarUsuarios()]);
+      if (token && (!g || !d)) return;
+      const datos = g ? { codigo: g.codigo, nombre: g.nombre, descripcion: g.descripcion || "", estado: g.estado }
+                      : { codigo: "(se asigna al guardar)", nombre: "", descripcion: "", estado: "Activo" };
+      // Los miembros inactivos se muestran para poder quitarlos; para agregar solo aparecen los activos
+      const actuales = d ? d.miembros : [];
+      const opciones = us.map(u => ({ id: u.usuarioId, t: u.nombre + " (" + u.usuario + ")" }))
+        .concat(actuales.filter(m => !us.some(u => u.usuarioId === m.usuarioId)).map(m => ({ id: m.usuarioId, t: m.nombre + " (" + m.usuario + ", " + m.estado.toLowerCase() + ")" })));
+      let tags = null;
+      pb.ui.detalle({
+        $c, modulo: "Bóveda", titulo: "Grupos de acceso", modo, nombre: g && g.codigo + " · " + g.nombre, token: g && g.token, datos,
+        soloLectura: modo === "consulta" && !pb.can("grupos", "editar"),
+        items: ro => [
+          { dataField: "codigo", label: { text: "Grupo (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "nombre", label: { text: "Nombre" }, isRequired: !ro, editorOptions: { maxLength: 100, placeholder: "Por ejemplo: Bóveda · Aplicaciones" } },
+          { dataField: "estado", label: { text: "Estado" }, editorType: "dxSelectBox", editorOptions: { items: ["Activo", "Inactivo"] } },
+          { dataField: "descripcion", label: { text: "Descripción" }, colSpan: 3, editorOptions: { maxLength: 300 } }
+        ],
+        extra: ($x, ro) => {
+          const $m = $('<div class="card pad stack">').appendTo($x);
+          $m.append("<h2>Miembros del grupo</h2>").append($('<p class="muted" style="margin:0">').text(
+            "Todos los miembros pueden ver, copiar y cambiar las credenciales asignadas a este grupo. Cada consulta y cada cambio de miembros queda en Auditoría."));
+          tags = $("<div>").appendTo($m).dxTagBox({ items: opciones, valueExpr: "id", displayExpr: "t", value: actuales.map(m => m.usuarioId), readOnly: ro,
+            showSelectionControls: true, searchEnabled: true, applyValueMode: "useButtons", placeholder: "Elija los usuarios…", inputAttr: { "aria-label": "Miembros del grupo" } }).dxTagBox("instance");
+          if (d && d.credenciales.length) pb.ui.mdGrid($m, "Credenciales del grupo", [["c", "Credencial"], ["t", "Tipo"], ["s", "Sistema"]],
+            d.credenciales.map(x => ({ c: x.nombre, t: x.tipo, s: x.sistema })));
+        },
+        alGuardar: async f => {
+          const miembros = tags.option("value") || [];
+          if (!miembros.length) return pb.notify("Agregue al menos un miembro: sin miembros nadie podría ver sus credenciales", "warning");
+          const r = await pb.post(url("GuardarGrupo", g ? "token=" + g.token : ""), { nombre: f.nombre, descripcion: f.descripcion || null, estado: f.estado, miembros });
+          if (r === undefined) return;
+          pb.notify("Grupo de acceso guardado · " + miembros.length + (miembros.length === 1 ? " miembro" : " miembros")); listado();
+        },
+        alEditar: () => ficha(token, "edicion"),
+        alVolver: listado
+      });
+    }
+
+    listado();
+  });
+</script>
+}

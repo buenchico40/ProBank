@@ -7,6 +7,8 @@ using ProBank.Application.Abstractions;
 using ProBank.Application.Modules.Catalogos;
 using ProBank.Application.Modules.ConsultasDinamicas;
 using ProBank.Application.Modules.Coactivas;
+using ProBank.Application.Modules.Configuracion;
+using ProBank.Infrastructure.Modules.Configuracion;
 using ProBank.Application.Modules.Panel;
 using ProBank.Infrastructure.Modules.Coactivas;
 using ProBank.Application.Modules.Portafolio;
@@ -42,10 +44,26 @@ public static class DependencyInjection
             services.AddSingleton(new SecretClient(new Uri(kv), credencial));
         services.AddSingleton<ISecretProvider>(sp => sp.GetService<SecretClient>() is { } c
             ? new KeyVaultSecretProvider(c)
-            : new SinKeyVault());
+            : new SinKeyVault(config));
 
+        // Documentos adjuntos: Blob Storage si hay cuenta configurada; si no (local), una carpeta del equipo
+        var blob = config["Almacen:BlobEndpoint"];
+        services.AddSingleton<IAlmacenArchivos>(string.IsNullOrWhiteSpace(blob)
+            ? new CarpetaAlmacen(config["Almacen:CarpetaLocal"] is { Length: > 0 } carpeta ? carpeta
+                : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ProBank", "archivos"))
+            : new BlobAlmacen(new Azure.Storage.Blobs.BlobServiceClient(new Uri(blob), credencial)));
+
+        // CFG-01: configuración global (Configuración › Parámetros generales) con caché corta
+        services.AddSingleton<IConfiguracionGlobal, ConfiguracionGlobal>();
+        services.AddScoped<IConfiguracionRepository, ConfiguracionRepository>();
+
+        // SQL-08 y CFG-03: el proveedor de correo (Graph, Smtp o Carpeta, esta solo en desarrollo) se elige en cada envío según la
+        // configuración global, así un cambio se aplica sin reiniciar (ADR 0011)
         services.AddSingleton(new GraphServiceClient(credencial, ["https://graph.microsoft.com/.default"]));
-        services.AddScoped<IMailSender, GraphMailSender>();
+        var carpetaCorreo = config["Correo:CarpetaLocal"] is { Length: > 0 } c ? c
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ProBank", "correos");
+        services.AddScoped<IMailSender>(sp => new CorreoSegunConfiguracion(sp.GetRequiredService<IConfiguracionGlobal>(),
+            sp.GetRequiredService<GraphServiceClient>(), sp.GetRequiredService<ISecretProvider>(), carpetaCorreo));
 
         // Módulos
         services.AddScoped<ICatalogoRepository, CatalogoRepository>();
@@ -54,12 +72,19 @@ public static class DependencyInjection
         services.AddScoped<ICoactivasRepository, CoactivasRepository>();
         services.AddScoped<ITareaRepository, TareaRepository>();
         services.AddScoped<IPortafolioRepository, PortafolioRepository>();
+        services.AddSingleton<IGeneradorInforme, Reportes.GeneradorInformeDevExpress>();
+        services.AddSingleton<Application.Modules.Presupuesto.IGeneradorReportePresupuesto, Reportes.GeneradorReportePresupuestoDevExpress>();
+        services.AddScoped<Application.Modules.Marketing.IMarketingRepository, Modules.Marketing.MarketingRepository>();
+        services.AddScoped<Application.Modules.Presupuesto.IPresupuestoRepository, Modules.Presupuesto.PresupuestoRepository>();
+        services.AddScoped<Application.Modules.Boveda.IBovedaRepository, Modules.Boveda.BovedaRepository>();
         services.AddScoped<IConsultaRepository, ConsultaRepository>();
         services.AddScoped<IConsultaExecutor, SqlConsultaExecutor>();
         services.AddScoped<IProgramacionRepository, ProgramacionRepository>();
         services.AddSingleton<IExportador, ExportadorCsv>();
         services.AddSingleton<IExportador, ExportadorTexto>();
         services.AddSingleton<IExportador, ExportadorJson>();
+        services.AddSingleton<IExportador, Reportes.ExportadorXlsx>();
+        services.AddSingleton<IExportador, Reportes.ExportadorPdf>();
         return services;
     }
 }

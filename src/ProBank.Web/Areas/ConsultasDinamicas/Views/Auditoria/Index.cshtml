@@ -1,0 +1,34 @@
+@{ ViewData["Title"] = "Auditoría de ejecuciones"; ViewData["Opcion"] = "audejec"; }
+@section Scripts {
+<script src="~/js/consultas.js" asp-append-version="true"></script>
+<script>
+  // SQL-06: cada solicitud, aprobación, rechazo, ejecución (exitosa o fallida), exportación y envío por correo, con los parámetros
+  // resueltos, filas, duración e IP. Es de solo lectura.
+  pb.listo.then(() => {
+    const $c = $("#content"), url = cq.url;
+    const hoy = new Date(), desde = { v: new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 30) }, hasta = { v: hoy };
+    let lista = null;
+    const dur = ms => ms == null ? "—" : (ms / 1000).toFixed(1).replace(".", ",") + " s";
+    lista = pb.ui.grid({
+      $c, modulo: "Consultas dinámicas", titulo: "Auditoría de ejecuciones", opcion: "audejec", clave: "k",
+      cargar: async () => {
+        const r = await pb.get(url("Auditoria", "desde=" + cq.iso(desde.v) + "&hasta=" + cq.iso(hasta.v)));
+        return r === undefined ? r : r.map((x, i) => Object.assign({ k: i }, x));
+      },
+      filtros: [
+        { location: "before", widget: "dxDateBox", options: { value: desde.v, displayFormat: "dd/MM/yyyy", width: 150, inputAttr: { "aria-label": "Desde" },
+          onValueChanged: e => { desde.v = e.value; lista.recargar(); } } },
+        { location: "before", widget: "dxDateBox", options: { value: hasta.v, displayFormat: "dd/MM/yyyy", width: 150, inputAttr: { "aria-label": "Hasta" },
+          onValueChanged: e => { hasta.v = e.value; lista.recargar(); } } }
+      ],
+      columnas: [
+        { campo: "fecha", titulo: "Fecha y hora", valor: x => pb.fechaHora(x.fecha) }, { campo: "usuario", titulo: "Usuario" }, { campo: "evento", titulo: "Evento" },
+        { campo: "ejecucion", titulo: "Ejecución" }, { campo: "consulta", titulo: "Consulta" }, { campo: "base", titulo: "Base de datos" },
+        { campo: "detalle", titulo: "Detalle y parámetros resueltos", valor: x => cq.corte(x.detalle) }, { campo: "filas", titulo: "Filas" },
+        { campo: "duracionMs", titulo: "Duración", valor: x => dur(x.duracionMs) }, { campo: "resultado", titulo: "Resultado", pill: true }, { campo: "ip", titulo: "IP" }
+      ],
+      vacio: "No hay eventos en el periodo."
+    });
+  });
+</script>
+}

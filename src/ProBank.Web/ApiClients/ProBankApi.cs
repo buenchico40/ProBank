@@ -62,6 +62,21 @@ public sealed class ProBankApi(HttpClient http)
         using var r = await http.PutAsJsonAsync(ruta, cuerpo, ct);
         return ((int)r.StatusCode, await r.Content.ReadAsStringAsync(ct));
     }
+
+    /// <summary>Envía un archivo como multipart/form-data (campo «archivo») con campos de texto adicionales.</summary>
+    public async Task<(int Status, string Json)> PostArchivo(string ruta, IFormFile archivo, IReadOnlyDictionary<string, string?> campos, CancellationToken ct)
+    {
+        await using var s = archivo.OpenReadStream();
+        using var contenido = new StreamContent(s);
+        contenido.Headers.ContentType = new(string.IsNullOrEmpty(archivo.ContentType) ? "application/octet-stream" : archivo.ContentType);
+        using var form = new MultipartFormDataContent { { contenido, "archivo", archivo.FileName } };
+        foreach (var (nombre, valor) in campos) if (valor is not null) form.Add(new StringContent(valor), nombre);
+        using var r = await http.PostAsync(ruta, form, ct);
+        return ((int)r.StatusCode, await r.Content.ReadAsStringAsync(ct));
+    }
+
+    /// <summary>Respuesta sin leer (para pasar archivos al navegador); quien llama la libera.</summary>
+    public Task<HttpResponseMessage> GetRespuesta(string ruta, CancellationToken ct) => http.GetAsync(ruta, HttpCompletionOption.ResponseHeadersRead, ct);
 }
 
 /// <summary>Inicio de sesión contra api/auth/ingresar. Devuelve la sesión o el mensaje de error de la API.</summary>

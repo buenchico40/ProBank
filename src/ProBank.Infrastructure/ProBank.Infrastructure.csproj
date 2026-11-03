@@ -12,5 +12,8 @@
     <PackageReference Include="Azure.Security.KeyVault.Secrets" />
     <PackageReference Include="Azure.Storage.Blobs" />
     <PackageReference Include="Microsoft.Graph" />
+    <PackageReference Include="MailKit" />
+    <PackageReference Include="DevExpress.Reporting.Core" />
+    <PackageReference Include="DevExpress.Drawing.Skia" />
   </ItemGroup>
 </Project>

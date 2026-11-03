@@ -3,7 +3,7 @@
 ## Requisitos base
 La arquitectura debe ser n capas, debe manejar la interfaz estándar en todas las páginas, UX/UI. La solución debe ser responsive y ajustarse a los diferentes dispositivos. Físicamente deben estar separados el Front-end Intranet, Back-end y la Base de datos en Azure. Las tecnologías a utilizar son .NET 10, Dapper, CQRS, DevExpress para el front-end, SQL Server, Blob Storage, Azure, Azure OpenAI, Foundry, Document Intelligence y segundo factor. La identidad de los usuarios se gestiona con Microsoft Entra ID (reemplaza al Active Directory on-premise).
 
-Módulos de esta versión: Seguridad, Coactivas, Portafolio, Compras y pagos TI, Cumplimiento y auditoría, Certificados y secretos, Marketing, Consultas dinámicas, Versiones de aplicaciones y componentes, y Reportes.
+Módulos de esta versión: Seguridad, Coactivas, Portafolio, Presupuesto, Cumplimiento y auditoría, Bóveda, Marketing, Consultas dinámicas, Versiones de aplicaciones y componentes, Reportes y Configuración.
 
 ---
 
@@ -54,20 +54,20 @@ flowchart TB
 - Las cadenas de conexión de Consultas dinámicas se guardan como secretos en Key Vault; la base solo guarda su referencia y nunca se muestran en pantalla.
 - El enlace VPN / ExpressRoute queda solo para la API on-premise y las bases habilitadas para consultas, que aceptan llamadas únicamente desde la IP del Back-end.
 - Tareas largas (exportaciones de más de 5000 filas, cargas masivas de Excel, consultas programadas) van a una cola implementada en SQL Server (sin Service Bus): respuesta inmediata en estado pendiente y aviso en la campanita al terminar.
-- Los correos de las consultas programadas salen con Microsoft Graph (sendMail) desde un buzón de servicio, con permiso Mail.Send limitado a ese buzón por política de acceso de aplicación.
+- Los correos de las consultas programadas salen con Microsoft Graph (sendMail) desde un buzón de servicio, con permiso Mail.Send limitado a ese buzón por política de acceso de aplicación, o por el servidor SMTP del banco, según Configuración › Parámetros generales (ADR 0011; la clave SMTP en Key Vault).
 
 ---
 
 ## 2. Arquitectura lógica
 
-Sistema modular en n capas. Cada módulo es una carpeta de dominio propia y se desarrolla sin afectar a los demás: Seguridad, Coactivas, Portafolio, Compras y pagos TI, Cumplimiento y auditoría, Certificados y secretos, Marketing, Consultas dinámicas, Versiones y Reportes.
+Sistema modular en n capas. Cada módulo es una carpeta de dominio propia y se desarrolla sin afectar a los demás: Seguridad, Coactivas, Portafolio, Presupuesto, Cumplimiento y auditoría, Bóveda, Marketing, Consultas dinámicas, Versiones y Reportes.
 
 ```mermaid
 flowchart TB
   P["<b>Presentación · Front-end MVC</b><br/>Vistas DevExtreme: grids master-detail, formularios, HtmlEditor,<br/>Gantt, charts, visor de reportes · tema servido por API"]
   A["<b>API · Back-end</b><br/>Controladores por módulo · autenticación con Entra ID (OpenID Connect)<br/>autorización por rol activo · rate limit por usuario<br/>revocación por cambio de IP · tokens opacos (anti-IDOR)"]
   C["<b>Aplicación · CQRS</b><br/>Comandos: crear, editar, anular, aprobar, ejecutar, programar<br/>Consultas: listados paginados, detalle, reportes<br/>Transacciones en aplicación y, cuando se puede, en el SP"]
-  D["<b>Dominio</b> · una carpeta por módulo<br/>Seguridad · Coactivas · Portafolio · Compras y pagos TI<br/>Cumplimiento y auditoría · Certificados y secretos · Marketing<br/>Consultas dinámicas · Versiones · Reportes"]
+  D["<b>Dominio</b> · una carpeta por módulo<br/>Seguridad · Coactivas · Portafolio · Presupuesto<br/>Cumplimiento y auditoría · Bóveda · Marketing<br/>Consultas dinámicas · Versiones · Reportes"]
   I["<b>Infraestructura</b><br/>Dapper + SP de consulta y de ejecución · Polly<br/>Blob Storage · Microsoft Graph (perfil, grupos, correo) · Azure OpenAI<br/>Document Intelligence · API on-premise · Key Vault"]
   X["<b>Transversal</b><br/>Auditoría · observabilidad<br/>notificaciones · cola y programador de tareas"]
   P --> A --> C --> D
@@ -109,7 +109,7 @@ Los reportes se diseñan y alojan en el servidor de reportes. ProBank solo regis
 | Archivos | Azure Blob Storage |
 | Inteligencia artificial | Azure OpenAI / AI Foundry, Document Intelligence |
 | Identidad | Microsoft Entra ID (OpenID Connect, Microsoft.Identity.Web) + Microsoft Graph para perfil y grupos; segundo factor; ProBank.Setup para la cuenta local del administrador |
-| Correo | Microsoft Graph sendMail desde un buzón de servicio (Mail.Send limitado a ese buzón) |
+| Correo | Microsoft Graph sendMail desde un buzón de servicio (Mail.Send limitado a ese buzón) o SMTP del banco con MailKit (ADR 0011) |
 | Tareas programadas | BackgroundService de ProBank.Api sobre la cola en SQL Server |
 | Secretos | Azure Key Vault |
 | Reportería | DevExpress Report Server o SSRS / Power BI Report Server (pendiente) |
@@ -121,7 +121,7 @@ Los reportes se diseñan y alojan en el servidor de reportes. ProBank solo regis
 
 ## 4. Solución .NET: distribución de proyectos
 
-Dos desplegables independientes (Web y Api), un proyecto de base de datos y una solución de pruebas aparte. Cada módulo es una carpeta en cada capa: Seguridad, Coactivas, Portafolio, ComprasPagos, Cumplimiento, Credenciales, Marketing, ConsultasDinamicas, Versiones, Reportes.
+Dos desplegables independientes (Web y Api), un proyecto de base de datos y una solución de pruebas aparte. Cada módulo es una carpeta en cada capa: Seguridad, Coactivas, Portafolio, Presupuesto, Cumplimiento, Boveda, Marketing, ConsultasDinamicas, Versiones, Reportes.
 
 ```mermaid
 flowchart TB
@@ -143,7 +143,7 @@ flowchart TB
     IT["IntegrationTests"]
     FT["FunctionalTests (UI)"]
     NF["NonFunctionalTests (carga)"]
-    SET["ProBank.Setup · consola<br/>admin inicial y reseteo de clave"]
+    SET["ProBank.Setup · consola<br/>admin inicial, reseteo de clave y llaves de Always Encrypted"]
   end
   WEB -->|HTTPS| API
   WEB --> CON
@@ -163,7 +163,7 @@ flowchart TB
 - ProBank.Domain no depende de nada.
 - ProBank.Application define interfaces (repositorios, servicios externos) que implementa ProBank.Infrastructure.
 - ProBank.Api es el único punto de composición (inyección de dependencias) del Back-end y aloja el BackgroundService de la cola y del programador de consultas.
-- ProBank.Setup está en la solución de pruebas y reutiliza Infrastructure para crear el administrador inicial y resetear la clave.
+- ProBank.Setup está en la solución de pruebas y reutiliza Infrastructure para crear el administrador inicial y resetear la clave, y crea una vez por ambiente las llaves de Always Encrypted (`llaves`: CMK en Key Vault o certificado local, y CEK en la base) antes de publicar el `.dacpac`.
 
 **Estructura de carpetas**
 ```
@@ -199,7 +199,7 @@ ProBank.Tests.sln
 ├─ ProBank.IntegrationTests/
 ├─ ProBank.FunctionalTests/        pruebas de UI
 ├─ ProBank.NonFunctionalTests/     carga y rendimiento
-└─ ProBank.Setup/                  consola: admin inicial y reseteo de clave
+└─ ProBank.Setup/                  consola: admin inicial, reseteo de clave y llaves de Always Encrypted
 ```
 
 ---

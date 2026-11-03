@@ -23,27 +23,31 @@ Cada requisito apunta a su módulo, a la tabla principal y a la prueba que lo cu
 | PRY-07 | Cronograma Gantt por ítem, de todas las tareas, y filtrado al ítem desde su detalle. | Portafolio | pry.Item | `portafolio.spec.ts` @PRY-07 |
 | PRY-08 | Acuerdos semanales por ítem con responsable y fecha de cumplimiento; vencen solos. | Portafolio | pry.Item | `portafolio.spec.ts` @PRY-08 |
 | PRY-09 | Parametrización: qué roles ejecutan cada acción. | Portafolio | pry.Item | `portafolio.spec.ts` @PRY-09 |
-| COM-01 | Borrador de presupuesto del año siguiente, copiado del vigente y aprobado después. | Compras y pagos TI | com.Partida | `compras.spec.ts` @COM-01 |
-| COM-02 | Solicitudes de compra y renovaciones marcadas como Presupuestado o No presupuestado. | Compras y pagos TI | com.Partida | `compras.spec.ts` @COM-02 |
-| COM-03 | Alertas de renovación por días de aviso. | Compras y pagos TI | com.Partida | `compras.spec.ts` @COM-03 |
-| COM-04 | Pagos descuentan de la partida. | Compras y pagos TI | com.Partida | `compras.spec.ts` @COM-04 |
+| COM-01 | Borrador de presupuesto del año siguiente, copiado del vigente y aprobado después. | Presupuesto | com.Partida | `presupuesto.spec.ts` @COM-01 |
+| COM-02 | Solicitudes de compra y renovaciones marcadas como Presupuestado o No presupuestado. | Presupuesto | com.Solicitud, com.Renovacion | `presupuesto.spec.ts` @COM-02 |
+| COM-03 | Alertas de renovación por días de aviso. | Presupuesto | com.Renovacion | `presupuesto.spec.ts` @COM-03 |
+| COM-04 | Pagos descuentan de la partida. | Presupuesto | com.Pago, com.PagoDistribucion, com.vw_Partida | `presupuesto.spec.ts` @COM-04 |
 | CUM-01 | Controles con fecha de evaluación y estado calculado. | Cumplimiento y auditoría | cum.Control | `cumplimiento.spec.ts` @CUM-01 |
 | CUM-02 | Hallazgos con plan de acción; vencen solos. | Cumplimiento y auditoría | cum.Control | `cumplimiento.spec.ts` @CUM-02 |
-| CRE-01 | Certificados, cuentas técnicas y secretos con vencimiento y rotación. | Certificados y secretos | cred.GrupoAcceso | `credenciales.spec.ts` @CRE-01 |
-| CRE-02 | Mostrar o copiar un valor es un permiso propio, solo para el grupo de acceso, y queda auditado. | Certificados y secretos | cred.GrupoAcceso | `credenciales.spec.ts` @CRE-02 |
-| CRE-03 | Valores cifrados con Always Encrypted; CMK en Key Vault. | Certificados y secretos | cred.GrupoAcceso | `credenciales.spec.ts` @CRE-03 |
+| CRE-01 | Certificados, cuentas técnicas y secretos con vencimiento y rotación. | Bóveda | cred.Certificado, cred.CuentaTecnica, cred.Secreto, cred.CredencialVersion | `boveda.spec.ts` @CRE-01 |
+| CRE-02 | Mostrar o copiar un valor es un permiso propio, solo para el grupo de acceso, y queda auditado. | Bóveda | cred.GrupoAcceso, cred.GrupoMiembro, cred.CredencialAcceso | `boveda.spec.ts` @CRE-02 |
+| CRE-03 | Valores cifrados con Always Encrypted; CMK en Key Vault. | Bóveda | cred.CredencialVersion (Always Encrypted) | `boveda.spec.ts` @CRE-03 |
 | MKT-01 | Promociones con vigencia, audiencia por rol y orden. | Marketing | mkt.Promocion | `marketing.spec.ts` @MKT-01 |
-| MKT-02 | Comunicados estructurados (resumen, secciones, contacto) con tipo, vigencia y destacado. | Marketing | mkt.Promocion | `marketing.spec.ts` @MKT-02 |
-| SQL-01 | Solo procedimientos almacenados; no se aceptan queries libres. | Consultas dinámicas | rpt.Conexion | `consultas.spec.ts` @SQL-01 |
+| MKT-02 | Comunicados estructurados (resumen, secciones, contacto) con tipo, vigencia y destacado. | Marketing | mkt.Comunicado | `marketing.spec.ts` @MKT-02 |
+| SQL-01 | Solo procedimientos almacenados; no se aceptan queries libres. | Consultas dinámicas | rpt.Consulta, rpt.Parametro | `consultas.spec.ts` @SQL-01 |
 | SQL-02 | Bases de datos configurables; la cadena se guarda en Key Vault y nunca se muestra; se elige una al ejecutar. | Consultas dinámicas | rpt.Conexion | `consultas.spec.ts` @SQL-02 |
-| SQL-03 | Aprobadores por ejecución, opcionales; si son varios, aprueban todos; quien solicita no aprueba. | Consultas dinámicas | rpt.Conexion | `consultas.spec.ts` @SQL-03 |
-| SQL-04 | Parámetros con valor fijo o variable: Hoy, Ayer, inicio y fin de semana, mes, mes anterior, trimestre y año; Año actual, Año anterior, Mes actual. | Consultas dinámicas | rpt.Conexion | `consultas.spec.ts` @SQL-04 |
-| SQL-05 | Exportación a Excel, CSV, PDF, JSON y texto delimitado. | Consultas dinámicas | rpt.Conexion | `consultas.spec.ts` @SQL-05 |
-| SQL-06 | Auditoría de cada solicitud, aprobación, rechazo, ejecución (exitosa o fallida) y exportación, con parámetros resueltos, filas, duración e IP. | Consultas dinámicas | rpt.Conexion | `consultas.spec.ts` @SQL-06 |
-| SQL-07 | Programación diaria, semanal o mensual; las variables se resuelven en cada corrida. | Consultas dinámicas | rpt.Conexion | `consultas.spec.ts` @SQL-07 |
-| SQL-08 | Envío por correo con Microsoft Graph desde un buzón de servicio a usuarios y grupos de Entra ID; archivos grandes van como enlace que vence. | Consultas dinámicas | rpt.Conexion | `consultas.spec.ts` @SQL-08 |
+| SQL-03 | Aprobadores por ejecución, opcionales; si son varios, aprueban todos; quien solicita no aprueba. | Consultas dinámicas | rpt.ConsultaAprobador, rpt.EjecucionAprobador | `consultas.spec.ts` @SQL-03 |
+| SQL-04 | Parámetros con valor fijo o variable: Hoy, Ayer, inicio y fin de semana, mes, mes anterior, trimestre y año; Año actual, Año anterior, Mes actual. | Consultas dinámicas | rpt.Parametro, rpt.Ejecucion | `consultas.spec.ts` @SQL-04 |
+| SQL-05 | Exportación a Excel, CSV, PDF, JSON y texto delimitado. | Consultas dinámicas | rpt.Ejecucion (RutaResultado) | `consultas.spec.ts` @SQL-05 |
+| SQL-06 | Auditoría de cada solicitud, aprobación, rechazo, ejecución (exitosa o fallida) y exportación, con parámetros resueltos, filas, duración e IP. | Consultas dinámicas | rpt.EjecucionEvento | `consultas.spec.ts` @SQL-06 |
+| SQL-07 | Programación diaria, semanal o mensual; las variables se resuelven en cada corrida. | Consultas dinámicas | rpt.Programacion | `ReglasTests` (unitaria) |
+| SQL-08 | Envío por correo con Microsoft Graph desde un buzón de servicio a usuarios y grupos de Entra ID; archivos grandes van como enlace que vence. | Consultas dinámicas | rpt.ProgramacionDestinatario | Pendiente (enlace que vence, grupos de Entra ID) |
 | VER-01 | Catálogo de aplicaciones y componentes con tipo, responsable y repositorio. | Versiones de aplicaciones y componentes | ver.Aplicacion | `versiones.spec.ts` @VER-01 |
 | VER-02 | Versión mayor.menor.parche con notas, ligada a proyectos, mejoras y bugs del Portafolio. | Versiones de aplicaciones y componentes | ver.Aplicacion | `versiones.spec.ts` @VER-02 |
 | VER-03 | Despliegues por ambiente; paso a Producción con aprobadores (si son varios, todos); reversión con motivo. | Versiones de aplicaciones y componentes | ver.Aplicacion | `versiones.spec.ts` @VER-03 |
 | VER-04 | Dependencias con versión mínima; aviso si un despliegue rompe una dependencia. | Versiones de aplicaciones y componentes | ver.Aplicacion | `versiones.spec.ts` @VER-04 |
 | REP-01 | Catálogo con ruta, parámetros y roles; publicar un reporte no requiere desplegar ProBank. | Reportes | rpt.Reporte | `reportes.spec.ts` @REP-01 |
+| CFG-01 | Parámetros globales por categoría, editables solo con permiso y auditados con su valor anterior y el nuevo. | Configuración | cfg.Parametro | `ConfiguracionTests` (unitaria) |
+| CFG-02 | Ningún secreto en la configuración: solo el nombre en Key Vault, con el prefijo de su uso (smtp-, cnx-). | Configuración | cfg.Parametro, rpt.Conexion | `ConfiguracionTests`, `ConsultasTests` (unitarias) |
+| CFG-03 | Correo por Microsoft 365 (Graph), SMTP del banco o carpeta local (solo desarrollo), con prueba de envío. | Configuración | cfg.Parametro | `ConfiguracionTests` (unitaria) |
+| CFG-04 | Consultas dinámicas: conservación de resultados guardados y tamaño máximo del adjunto en el correo. | Configuración | cfg.Parametro, rpt.Ejecucion | Pendiente |

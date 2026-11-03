@@ -17,7 +17,17 @@ public interface IPortafolioRepository
     Task<IReadOnlyList<ItemPortafolioDto>> ListarItems(bool soloAbiertos, CancellationToken ct);
     Task<ItemDetalleDto?> ObtenerItem(Guid token, DateOnly hoy, CancellationToken ct);
     Task<ItemGuardadoDto> GuardarItem(Guid? token, GuardarItemRequest r, Actor actor, CancellationToken ct);
-    Task EliminarItem(Guid token, Actor actor, CancellationToken ct);
+    /// <summary>Devuelve las rutas de los documentos adjuntos que se quitaron con el ítem.</summary>
+    Task<IReadOnlyList<string>> EliminarItem(Guid token, Actor actor, CancellationToken ct);
+
+    Task<IReadOnlyList<AdjuntoDto>> ListarAdjuntos(AmbitoAdjunto ambito, Guid duenoToken, CancellationToken ct);
+    Task<(AmbitoAdjunto Ambito, string Nombre, string TipoContenido, string Ruta)?> ObtenerAdjunto(Guid token, CancellationToken ct);
+    Task RegistrarAdjunto(AmbitoAdjunto ambito, Guid duenoToken, Guid token, string nombre, string descripcion, string tipoContenido, long tamano, string ruta, Actor actor, CancellationToken ct);
+    Task ActualizarAdjunto(Guid token, string descripcion, Actor actor, CancellationToken ct);
+    /// <summary>Devuelve la ruta del archivo para borrarlo del almacén.</summary>
+    Task<string> EliminarAdjunto(Guid token, Actor actor, CancellationToken ct);
+    Task<IReadOnlyList<ParametroAdjuntoDto>> ParametrosAdjunto(CancellationToken ct);
+    Task GuardarParametroAdjunto(AmbitoAdjunto ambito, string extensiones, int maximoMB, Actor actor, CancellationToken ct);
     Task GuardarHitos(Guid itemToken, IReadOnlyList<HitoRequest> hitos, Actor actor, CancellationToken ct);
     Task<CronogramaDto> Cronograma(Guid? itemToken, CancellationToken ct);
 
@@ -31,7 +41,7 @@ public interface IPortafolioRepository
     Task<int> GuardarInforme(int? informeId, GuardarInformeRequest r, Actor actor, CancellationToken ct);
     Task<InformeContenidoDto?> ObtenerInforme(int informeId, CancellationToken ct);
     Task<InformeDatos> DatosInforme(DateOnly desde, DateOnly hasta, CancellationToken ct);
-    Task GenerarInforme(int informeId, string html, Actor actor, CancellationToken ct);
+    Task GenerarInforme(int informeId, string rutaPdf, Actor actor, CancellationToken ct);
 
     Task<ParametrizacionDto> Parametrizacion(CancellationToken ct);
     Task GuardarAccionRol(string accion, IReadOnlyList<string> roles, Actor actor, CancellationToken ct);
@@ -57,6 +67,7 @@ public sealed record EliminarAcuerdoCommand(int AcuerdoId) : ICommand<string>;
 public sealed record CumplirAcuerdoCommand(int AcuerdoId) : ICommand<string>;
 public sealed record GuardarInformeCommand(int? InformeId, GuardarInformeRequest Request) : ICommand<int>;
 public sealed record GenerarInformeCommand(int InformeId) : ICommand<string>;
+public sealed record InformePdfQuery(int InformeId) : IQuery<ArchivoAdjunto>;
 public sealed record GuardarAccionRolCommand(string Accion, IReadOnlyList<string> Roles) : ICommand<string>;
 
 internal sealed class PortafolioConsultas(IPortafolioRepository repo, IPermisos permisos, IClock clock) :
@@ -117,12 +128,13 @@ internal sealed class GuardarItemHandler(IPortafolioRepository repo, IPermisos p
     }
 }
 
-internal sealed class EliminarItemHandler(IPortafolioRepository repo, IPermisos permisos, ICurrentUser user) : ICommandHandler<EliminarItemCommand, string>
+internal sealed class EliminarItemHandler(IPortafolioRepository repo, IPermisos permisos, ICurrentUser user, IAlmacenArchivos almacen) : ICommandHandler<EliminarItemCommand, string>
 {
     public async Task<Result<string>> Handle(EliminarItemCommand c, CancellationToken ct)
     {
         if (await permisos.Exigir("proyectos", "eliminar", ct) is { } e) return Result.Failure<string>(e);
-        await repo.EliminarItem(c.Token, Actor.De(user), ct);
+        foreach (var ruta in await repo.EliminarItem(c.Token, Actor.De(user), ct))
+            await almacen.Eliminar(Adjuntos.Contenedor, ruta, CancellationToken.None);
         return Result.Success("Borrador eliminado");
     }
 }
@@ -183,8 +195,9 @@ internal sealed class AcuerdoHandlers(IPortafolioRepository repo, IPermisos perm
     }
 }
 
-internal sealed class InformeHandlers(IPortafolioRepository repo, IPermisos permisos, ICurrentUser user, IClock clock) :
-    ICommandHandler<GuardarInformeCommand, int>, ICommandHandler<GenerarInformeCommand, string>
+internal sealed class InformeHandlers(IPortafolioRepository repo, IPermisos permisos, ICurrentUser user, IClock clock,
+    IGeneradorInforme generador, IAlmacenArchivos almacen) :
+    ICommandHandler<GuardarInformeCommand, int>, ICommandHandler<GenerarInformeCommand, string>, IQueryHandler<InformePdfQuery, ArchivoAdjunto>
 {
     public async Task<Result<int>> Handle(GuardarInformeCommand c, CancellationToken ct)
     {
@@ -195,15 +208,32 @@ internal sealed class InformeHandlers(IPortafolioRepository repo, IPermisos perm
         return Result.Success(await repo.GuardarInforme(c.InformeId, r, Actor.De(user), ct));
     }
 
-    /// <summary>Arma el informe con la bitácora y los acuerdos del periodo y guarda una copia (se puede regenerar).</summary>
+    /// <summary>
+    /// Arma el informe (gráficos y detalle del periodo) con DevExpress Reporting y guarda el PDF como copia en Blob Storage
+    /// (se puede regenerar: reemplaza la copia anterior).
+    /// </summary>
     public async Task<Result<string>> Handle(GenerarInformeCommand c, CancellationToken ct)
     {
         if (await permisos.Exigir("informes", "generar", ct) is { } e) return Result.Failure<string>(e);
         if (await repo.ObtenerInforme(c.InformeId, ct) is not { } i) return Result.Failure<string>(Error.NotFound("El informe"));
         var datos = await repo.DatosInforme(i.Desde, i.Hasta, ct);
-        await repo.GenerarInforme(i.InformeId, InformeHtml.Armar(i, datos, user.Nombre, clock.Ahora), Actor.De(user), ct);
+        var pdf = generador.Pdf(InformeModelo.Armar(i, datos, user.Nombre, clock.Ahora));
+        var ruta = RutaPdf(i.Codigo);
+        using (var s = new MemoryStream(pdf, writable: false)) await almacen.Guardar(Adjuntos.Contenedor, ruta, s, "application/pdf", ct);
+        await repo.GenerarInforme(i.InformeId, ruta, Actor.De(user), ct);
         return Result.Success($"Informe {i.Codigo} generado con {datos.Resumen.Count} ítem(s)");
     }
+
+    public async Task<Result<ArchivoAdjunto>> Handle(InformePdfQuery q, CancellationToken ct)
+    {
+        if (await permisos.Exigir("informes", "ver", ct) is { } e) return Result.Failure<ArchivoAdjunto>(e);
+        if (await repo.ObtenerInforme(q.InformeId, ct) is not { TienePdf: true } i) return Result.Failure<ArchivoAdjunto>(Error.NotFound("El PDF del informe"));
+        return await almacen.Abrir(Adjuntos.Contenedor, RutaPdf(i.Codigo), ct) is { } s
+            ? Result.Success(new ArchivoAdjunto(i.Codigo + ".pdf", "application/pdf", s))
+            : Result.Failure<ArchivoAdjunto>(Error.NotFound("El PDF del informe"));
+    }
+
+    private static string RutaPdf(string codigo) => $"pry/informes/{codigo}.pdf";
 }
 
 internal sealed class GuardarAccionRolHandler(IPortafolioRepository repo, IPermisos permisos, ICurrentUser user) : ICommandHandler<GuardarAccionRolCommand, string>

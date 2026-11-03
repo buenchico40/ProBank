@@ -1,0 +1,122 @@
+@{ ViewData["Title"] = "Solicitudes de compra"; ViewData["Opcion"] = "solicitudes"; }
+@section Scripts {
+<script src="~/js/presupuesto.js" asp-append-version="true"></script>
+<script>
+  // COM-02: compras presupuestadas (imputan a una partida) o no presupuestadas. Aprobada, la solicitud queda como comprometido
+  // de su partida hasta que se paga. El contrato se adjunta a la solicitud.
+  pb.listo.then(() => {
+    const $c = $("#content"), url = pres.url, $$ = pb.dinero;
+    let lista = null;
+
+    function listado() {
+      $c.empty();
+      lista = pb.ui.grid({
+        $c, modulo: "Presupuesto", titulo: "Solicitudes de compra", opcion: "solicitudes", clave: "token",
+        cargar: () => pb.get(url("Solicitudes")),
+        columnas: [
+          { campo: "codigo", titulo: "Solicitud" }, { campo: "descripcion", titulo: "Descripción" }, { campo: "area", titulo: "Área solicitante" },
+          { campo: "presupuestado", titulo: "Presupuesto", valor: s => s.presupuestado ? "Presupuestado" : "No presupuestado", pill: true },
+          { campo: "partida", titulo: "Partida", valor: s => s.partida || "—" }, { campo: "monto", titulo: "Monto", formato: "dinero" },
+          { campo: "origen", titulo: "Origen" }, { campo: "aprobacion", titulo: "Aprobación", pill: true },
+          { campo: "pagado", titulo: "Pagado", formato: "dinero" }, { campo: "estado", titulo: "Estado", pill: true }
+        ],
+        anulada: s => s.estado === "Anulado",
+        botones: [
+          { text: "Nuevo", icon: "add", type: "default", accion: "crear", onClick: () => ficha(null, "nuevo") },
+          { text: "Editar", icon: "edit", accion: "editar", fila: true, onClick: s => ficha(s.token, "edicion") },
+          { text: "Aprobar", icon: "check", accion: "aprobar", fila: true, onClick: s => resolver(s, true) },
+          { text: "Rechazar", icon: "close", accion: "aprobar", fila: true, onClick: s => resolver(s, false) },
+          { text: "Anular", icon: "clear", accion: "eliminar", fila: true, onClick: anular }
+        ],
+        alAbrir: s => ficha(s.token, "consulta"),
+        detalle: async ($e, s) => {
+          pb.ui.mdHead($e, [s.codigo, s.descripcion, s.area, s.presupuestado ? "Partida " + s.partida : "No presupuestado", $$(s.monto), "Pagado " + $$(s.pagado), "Aprobación: " + s.aprobacion], s.estado);
+          if (!s.presupuestado) pb.ui.mdNote($e, "Compra fuera del presupuesto: no descuenta de ninguna partida. Para financiarla, registre un ajuste o movimiento que la incluya en una partida.");
+          if (s.comentario) pb.ui.mdNote($e, "Comentario de la aprobación: " + s.comentario);
+          const d = await pb.get(url("Solicitud", "token=" + s.token));
+          if (!d) return;
+          pb.ui.mdGrid($e, "Pagos asociados", [["p", "Pago"], ["f", "Fecha"], ["m", "Monto", "right"], ["st", "Estado"]],
+            d.pagos.map(p => ({ p: p.codigo, f: pb.fecha(p.fecha), m: $$(p.monto), st: p.estado })), "Sin pagos registrados.");
+          $e.append($('<div class="mdtitle">').text("Contrato"));
+          pres.documentos($("<div>").appendTo($e), { dueno: "solicitudes", token: s.token, tipos: ["Contrato"], docs: d.documentos, editable: false });
+          if (s.origen !== "Requerimiento") pb.ui.mdNote($e, "Originada por la renovación " + s.origen + ".");
+          const acc = [];
+          if (s.estado === "Pendiente" && pb.can("solicitudes", "aprobar"))
+            acc.push({ text: "Aprobar", icon: "check", type: "default", onClick: () => resolver(s, true) }, { text: "Rechazar", icon: "close", onClick: () => resolver(s, false) });
+          if (pb.can("pagos", "crear")) acc.push({ text: "Registrar pago", icon: "money", type: s.estado === "En curso" ? "default" : "normal", disabled: s.estado !== "En curso",
+            onClick: () => { window.location.href = "/Presupuesto/Pagos?solicitud=" + s.token; } });
+          if (acc.length) pb.ui.mdActions($e, acc);
+        }
+      });
+    }
+
+    function resolver(s, aprobar) {
+      if (s.estado !== "Pendiente") return pb.notify("Solo se resuelven solicitudes pendientes", "warning");
+      pres.resolver(url("ResolverSolicitud", "token=" + s.token), s.codigo, aprobar, () => lista.recargar());
+    }
+
+    async function anular(s) {
+      if (s.estado === "Anulado") return pb.notify("La solicitud ya está anulada", "warning");
+      if (!await pb.ui.confirmar("Anular solicitud", "¿Desea anular <b>" + pb.esc(s.codigo) + "</b>? Libera su comprometido; si tiene pagos, anúlelos antes.", "Anular", "danger", "clear")) return;
+      if (await pb.post(url("AnularSolicitud", "token=" + s.token)) !== undefined) { pb.notify("Solicitud " + s.codigo + " anulada"); lista.recargar(); }
+    }
+
+    async function ficha(token, modo) {
+      const [d, ps] = await Promise.all([token ? pb.get(url("Solicitud", "token=" + token)) : null, pres.partidas(false)]);
+      if (token && !d) return;
+      const s = d && d.solicitud;
+      if (modo === "edicion" && (s.estado !== "Pendiente")) return pb.notify("Solo se corrigen solicitudes pendientes de aprobación; puede adjuntar el contrato desde la consulta", "warning");
+      const datos = s ? { codigo: s.codigo, descripcion: s.descripcion, area: s.area, proveedor: s.proveedor || "", presupuestado: s.presupuestado, partida: s.partidaToken, monto: s.monto,
+                          origen: s.origen, aprobacion: s.aprobacion, pagado: $$(s.pagado), porPagar: $$(s.porPagar), estado: s.estado, solicitante: s.solicitante + " · " + pb.fechaHora(s.fechaRegistro) }
+                      : { codigo: "(se asigna al guardar)", descripcion: "", area: pres.AREAS[0], proveedor: "", presupuestado: true, partida: null, monto: null,
+                          origen: "Requerimiento", aprobacion: "Pendiente", pagado: "—", porPagar: "—", estado: "Pendiente", solicitante: pb.sesion.nombre };
+      let form = null;
+      const recargarFicha = () => ficha(token, modo);
+      form = pb.ui.detalle({
+        $c, modulo: "Presupuesto", titulo: "Solicitudes de compra", modo, nombre: s && s.codigo, token: s && s.token, datos,
+        soloLectura: modo === "consulta" && (!pb.can("solicitudes", "editar") || s.estado !== "Pendiente"),
+        items: ro => [
+          { dataField: "codigo", label: { text: "Solicitud (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "descripcion", label: { text: "Descripción" }, colSpan: 2, isRequired: !ro, editorOptions: { maxLength: 300 } },
+          { dataField: "area", label: { text: "Área solicitante" }, editorType: "dxSelectBox", isRequired: !ro, editorOptions: { items: pres.AREAS } },
+          { dataField: "proveedor", label: { text: "Proveedor (opcional)" }, editorOptions: { maxLength: 150 } },
+          { dataField: "monto", label: { text: "Monto" }, editorType: "dxNumberBox", isRequired: !ro, editorOptions: { format: "$ #,##0.00", min: 0.01 } },
+          { dataField: "presupuestado", label: { text: "Presupuestado" }, editorType: "dxSwitch", editorOptions: { switchedOnText: "Sí", switchedOffText: "No",
+            onValueChanged: e => { if (form) { form.itemOption("partida", "disabled", !e.value); if (!e.value) form.updateData("partida", null); } } } },
+          { dataField: "partida", label: { text: "Partida (activa)" }, colSpan: 2, disabled: !datos.presupuestado, editorType: "dxSelectBox",
+            editorOptions: { dataSource: ps, valueExpr: "token", displayExpr: "texto", searchEnabled: true, placeholder: "Elija la partida que financia la compra" } },
+          { dataField: "origen", label: { text: "Origen (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "aprobacion", label: { text: "Aprobación (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "pagado", label: { text: "Pagado (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "porPagar", label: { text: "Por pagar (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "estado", label: { text: "Estado (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "solicitante", label: { text: "Solicitado por" }, editorOptions: { readOnly: true } }
+        ],
+        extra: $x => {
+          const $d = $('<div class="card pad stack">').appendTo($x);
+          $d.append("<h2>Contrato</h2>");
+          pres.documentos($("<div>").appendTo($d), { dueno: "solicitudes", token: s && s.token, tipos: ["Contrato"], docs: d ? d.documentos : [],
+            editable: !!s && s.estado !== "Anulado" && (pb.can("solicitudes", "editar") || pb.can("solicitudes", "crear")), listo: recargarFicha });
+          if (d && d.pagos.length) {
+            const $p = $('<div class="card pad stack">').appendTo($x);
+            $p.append("<h2>Pagos</h2>");
+            pb.ui.mdGrid($p, "", [["p", "Pago"], ["f", "Fecha"], ["m", "Monto", "right"], ["st", "Estado"]], d.pagos.map(p => ({ p: p.codigo, f: pb.fecha(p.fecha), m: $$(p.monto), st: p.estado })));
+          }
+        },
+        alGuardar: async f => {
+          if (f.presupuestado && !f.partida) return pb.notify("Elija la partida o márquela como no presupuestada", "warning");
+          const g = await pb.post(url("GuardarSolicitud", s ? "token=" + s.token : ""), { descripcion: f.descripcion, area: f.area, proveedor: f.proveedor || null,
+            presupuestado: !!f.presupuestado, partida: f.presupuestado ? f.partida : null, monto: f.monto });
+          if (g === undefined) return;
+          if (!s) { pb.notify("Solicitud registrada: queda pendiente de aprobación. Ahora puede adjuntar el contrato"); token = g; return ficha(g, "consulta"); }
+          pb.notify("Registro guardado correctamente"); listado();
+        },
+        alEditar: () => ficha(token, "edicion"),
+        alVolver: listado
+      });
+    }
+
+    listado();
+  });
+</script>
+}

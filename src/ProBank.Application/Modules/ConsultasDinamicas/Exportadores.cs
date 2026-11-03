@@ -4,12 +4,12 @@ using System.Text.Json;
 
 namespace ProBank.Application.Modules.ConsultasDinamicas;
 
-/// <summary>SQL-05: exportadores livianos. Excel y PDF se implementan en Infrastructure (requieren librerías).</summary>
+/// <summary>SQL-05: exportadores livianos. Excel y PDF se implementan en Infrastructure (DevExpress Reporting).</summary>
 public sealed class ExportadorCsv : IExportador
 {
     public string Formato => "csv";
     public string TipoContenido => "text/csv";
-    public byte[] Exportar(ResultadoEjecucion r)
+    public byte[] Exportar(ResultadoEjecucion r, string titulo)
     {
         var sb = new StringBuilder();
         sb.AppendLine(string.Join(';', r.Columnas.Select(Escapar)));
@@ -20,26 +20,29 @@ public sealed class ExportadorCsv : IExportador
     internal static string Texto(object? v) => v switch
     {
         null => string.Empty,
-        DateTime d => d.ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture),
+        DateTime d => d.TimeOfDay == TimeSpan.Zero ? d.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) : d.ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture),
         DateOnly d => d.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture),
         decimal m => m.ToString("0.00", CultureInfo.InvariantCulture),
+        double m => m.ToString("0.00", CultureInfo.InvariantCulture),
         bool b => b ? "Sí" : "No",
+        IFormattable f => f.ToString(null, CultureInfo.InvariantCulture),
         _ => v.ToString() ?? string.Empty
     };
     private static string Escapar(string s) => "\"" + s.Replace("\"", "\"\"") + "\"";
 }
 
+/// <summary>Texto delimitado por tabulaciones.</summary>
 public sealed class ExportadorTexto : IExportador
 {
     public string Formato => "txt";
     public string TipoContenido => "text/plain";
-    public byte[] Exportar(ResultadoEjecucion r) => Encoding.UTF8.GetBytes(string.Join("\r\n",
-        new[] { string.Join('\t', r.Columnas) }.Concat(r.Filas.Select(f => string.Join('\t', r.Columnas.Select(c => ExportadorCsv.Texto(f.GetValueOrDefault(c))))))));
+    public byte[] Exportar(ResultadoEjecucion r, string titulo) => Encoding.UTF8.GetBytes(string.Join("\r\n",
+        new[] { string.Join('\t', r.Columnas) }.Concat(r.Filas.Select(f => string.Join('\t', r.Columnas.Select(c => ExportadorCsv.Texto(f.GetValueOrDefault(c)).Replace('\t', ' ')))))));
 }
 
 public sealed class ExportadorJson : IExportador
 {
     public string Formato => "json";
     public string TipoContenido => "application/json";
-    public byte[] Exportar(ResultadoEjecucion r) => JsonSerializer.SerializeToUtf8Bytes(r.Filas, new JsonSerializerOptions { WriteIndented = true });
+    public byte[] Exportar(ResultadoEjecucion r, string titulo) => JsonSerializer.SerializeToUtf8Bytes(r.Filas, new JsonSerializerOptions { WriteIndented = true });
 }

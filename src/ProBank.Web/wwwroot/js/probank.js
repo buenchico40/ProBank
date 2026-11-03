@@ -11,19 +11,20 @@
     { id: "pry", title: "Portafolio", icon: "folder", items: [["proyectos", "Proyectos, mejoras y bugs", "/Portafolio/Proyectos"], ["gantt", "Cronograma (Gantt)", "/Portafolio/Cronograma"],
       ["tareas", "Mis tareas", "/Portafolio/Tareas"], ["aprobaciones", "Aprobaciones", "/Portafolio/Aprobaciones"], ["acuerdos", "Acuerdos semanales", "/Portafolio/Acuerdos"],
       ["informes", "Informes de seguimiento", "/Portafolio/Informes"], ["paramproy", "Parametrización", "/Portafolio/Parametrizacion"]] },
-    { id: "com", title: "Compras y pagos TI", icon: "cart", items: [["presupuesto", "Presupuesto de TI"], ["movimientos", "Ajustes y movimientos"], ["renovaciones", "Renovaciones de servicios"], ["solicitudes", "Solicitudes de compra"], ["pagos", "Pagos"]] },
+    { id: "com", title: "Presupuesto", icon: "cart", items: [["presupuesto", "Presupuesto por área", "/Presupuesto/Partidas"], ["movimientos", "Ajustes y movimientos", "/Presupuesto/Movimientos"], ["renovaciones", "Renovaciones de servicios", "/Presupuesto/Renovaciones"], ["solicitudes", "Solicitudes de compra", "/Presupuesto/Solicitudes"], ["pagos", "Pagos", "/Presupuesto/Pagos"], ["areaspres", "Áreas del presupuesto", "/Presupuesto/Areas"]] },
     { id: "cum", title: "Cumplimiento y auditoría", icon: "taskcomplete", items: [["controles", "Controles regulatorios"], ["auditorias", "Auditorías"], ["hallazgos", "Hallazgos y planes de acción"]] },
-    { id: "cred", title: "Certificados y secretos", icon: "key", items: [["grupos", "Grupos de acceso"], ["certificados", "Certificados digitales"], ["cuentas", "Cuentas técnicas"], ["secretos", "Secretos"]] },
-    { id: "mkt", title: "Marketing", icon: "image", items: [["promos", "Imágenes promocionales"], ["comunicados", "Comunicados"]] },
-    { id: "sql", title: "Consultas dinámicas", icon: "datafield", items: [["consultas", "Catálogo de consultas", "/ConsultasDinamicas/Consultas"], ["ejecuciones", "Ejecuciones y aprobaciones", "/ConsultasDinamicas/Consultas"], ["audejec", "Auditoría de ejecuciones"], ["conexiones", "Bases de datos"]] },
-    { id: "rep", title: "Reportes", icon: "chart", items: [["reportes", "Reportería por módulo"], ["catreportes", "Catálogo de reportes"]] }
+    { id: "cred", title: "Bóveda", icon: "key", items: [["grupos", "Grupos de acceso", "/Boveda/Grupos"], ["certificados", "Certificados digitales", "/Boveda/Certificados"], ["cuentas", "Cuentas técnicas", "/Boveda/Cuentas"], ["secretos", "Secretos", "/Boveda/Secretos"]] },
+    { id: "mkt", title: "Marketing", icon: "image", items: [["promos", "Imágenes promocionales", "/Marketing/Promociones"], ["comunicados", "Comunicados", "/Marketing/Comunicados"]] },
+    { id: "sql", title: "Consultas dinámicas", icon: "datafield", items: [["consultas", "Catálogo de consultas", "/ConsultasDinamicas/Catalogo"], ["ejecuciones", "Ejecuciones y aprobaciones", "/ConsultasDinamicas/Ejecuciones"], ["audejec", "Auditoría de ejecuciones", "/ConsultasDinamicas/Auditoria"], ["conexiones", "Bases de datos", "/ConsultasDinamicas/Conexiones"]] },
+    { id: "rep", title: "Reportes", icon: "chart", items: [["reportes", "Reportería por módulo"], ["catreportes", "Catálogo de reportes"]] },
+    { id: "cfg", title: "Configuración", icon: "preferences", items: [["config", "Parámetros generales", "/Configuracion/Parametros"]] }
   ];
   const urlDe = it => it[2] || "/Home/Opcion?clave=" + it[0];
 
   const PILL = {
     "pill pill-g": ["Ejecutada", "Publicada", "Exitosa", "Registrada", "Al día", "Cumple", "Vigente", "Renovado", "Publicado", "Habilitado", "Activo", "Aprobada", "Completado", "Completada", "Clasificado", "Pagado", "Sí", "Transferido", "Exitoso", "Cumplido", "A tiempo", "Presupuestado", "Finalizado", "Atendido", "Transferida", "Ejecutado", "Total"],
     "pill pill-a": ["Pendiente de aprobación", "Próxima a evaluar", "Cumple parcialmente", "Medio", "Abierto", "Por rotar", "Por vencer", "Pendiente", "En curso", "EnCurso", "En revisión", "EnRevision", "Sin clasificar", "Parcial", "Bloqueado", "Bloqueo parcial", "No presupuestado", "Clave temporal", "Parcialmente atendido"],
-    "pill pill-r": ["Fallida", "Evaluación vencida", "No cumple", "Alto", "Vencido", "Rotación vencida", "Retirado", "Inactivo", "Anulado", "Rechazada", "No", "Sin bloqueo", "Fallido", "Vencida", "No permitido"],
+    "pill pill-r": ["Fallida", "Anulada", "Evaluación vencida", "No cumple", "Alto", "Vencido", "Rotación vencida", "Retirado", "Inactivo", "Anulado", "Rechazada", "No", "Sin bloqueo", "Fallido", "Vencida", "No permitido"],
     "pill pill-b": ["Bajo", "Planificada", "Cerrada", "Requerimiento enviado", "Cerrado", "Borrador", "Liberado", "Programado", "Levantada", "Transferido y liberado"]
   };
   const pillCls = t => { for (const k in PILL) if (PILL[k].indexOf(t) >= 0) return k; return ""; };

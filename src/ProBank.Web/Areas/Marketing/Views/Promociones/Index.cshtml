@@ -1,0 +1,139 @@
+@{ ViewData["Title"] = "Imágenes promocionales"; ViewData["Opcion"] = "promos"; }
+@section Scripts {
+<script src="~/js/marketing.js" asp-append-version="true"></script>
+<script>
+  // MKT-01: imágenes del carrusel del Panel o del inicio de sesión, con vigencia, audiencia y orden.
+  // Borrador → Publicar (programado, vigente o vencido según las fechas) → Retirar. Solo se eliminan borradores.
+  pb.listo.then(() => {
+    const $c = $("#content"), url = mkt.url;
+    const iso = v => { if (!v) return null; const x = v instanceof Date ? v : pb.aFecha(v); return x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0") + "-" + String(x.getDate()).padStart(2, "0"); };
+    const EXT = [".jpg", ".jpeg", ".png"], MAX = 2 * 1048576;
+    let lista = null, audiencias = null;
+    const cargarAudiencias = async () => audiencias || (audiencias = (await pb.get(url("Audiencias"))) || ["Todos"]);
+
+    function listado() {
+      $c.empty();
+      lista = pb.ui.grid({
+        $c, modulo: "Marketing", titulo: "Imágenes promocionales", opcion: "promos", clave: "token",
+        cargar: () => pb.get(url("Promociones")),
+        columnas: [
+          { campo: "codigo", titulo: "Código" }, { campo: "titulo", titulo: "Título" }, { campo: "ubicacion", titulo: "Ubicación" },
+          { campo: "desde", titulo: "Vigente desde", formato: "fecha" }, { campo: "hasta", titulo: "Vigente hasta", formato: "fecha" },
+          { campo: "audiencia", titulo: "Audiencia" }, { campo: "orden", titulo: "Orden" },
+          { campo: "tieneImagen", titulo: "Imagen", valor: p => p.tieneImagen ? "Sí" : "No", pill: true },
+          { campo: "estado", titulo: "Estado", pill: true }
+        ],
+        anulada: p => p.estado === "Retirado",
+        botones: [
+          { text: "Nuevo", icon: "add", type: "default", accion: "crear", onClick: () => ficha(null, "nuevo") },
+          { text: "Editar", icon: "edit", accion: "editar", fila: true, onClick: p => ficha(p.token, "edicion") },
+          { text: "Eliminar", icon: "trash", accion: "eliminar", fila: true, onClick: eliminar },
+          { text: "Publicar", icon: "upload", accion: "aprobar", fila: true, onClick: publicar },
+          { text: "Retirar", icon: "clear", accion: "aprobar", fila: true, onClick: retirar }
+        ],
+        alAbrir: p => ficha(p.token, "consulta"),
+        detalle: ($e, p) => {
+          pb.ui.mdHead($e, [p.codigo, p.titulo, p.ubicacion, "Vigencia " + (p.desde ? pb.fecha(p.desde) : "—") + " a " + (p.hasta ? pb.fecha(p.hasta) : "—"),
+            "Audiencia: " + p.audiencia, "Orden " + p.orden], p.estado);
+          $('<div class="promo-ficha">').appendTo($e).append(mkt.slide(p));
+          if (p.enlace) pb.ui.mdNote($e, "Al hacer clic abre: " + p.enlace);
+          pb.ui.mdNote($e, p.ubicacion === "Inicio de sesión"
+            ? "Se muestra en la pantalla de inicio de sesión durante su vigencia (solo las dirigidas a todos), en el orden indicado."
+            : "Se muestra en el carrusel del Panel durante su vigencia, en el orden indicado, a la audiencia elegida.");
+          const acc = [];
+          if (pb.can("promos", "aprobar") && ["Borrador", "Retirado"].indexOf(p.estado) >= 0) acc.push({ text: "Publicar", icon: "upload", type: "default", onClick: () => publicar(p) });
+          if (pb.can("promos", "aprobar") && ["Publicado", "Programado", "Vencido"].indexOf(p.estado) >= 0) acc.push({ text: "Retirar", icon: "clear", onClick: () => retirar(p) });
+          if (acc.length) pb.ui.mdActions($e, acc);
+        }
+      });
+    }
+
+    async function publicar(p) {
+      if (["Publicado", "Programado"].indexOf(p.estado) >= 0) return pb.notify(p.codigo + " ya está publicado", "warning");
+      if (!p.tieneImagen) return pb.notify("Cargue la imagen de " + p.codigo + " antes de publicar", "warning");
+      if (!p.desde || !p.hasta) return pb.notify("Defina la vigencia (desde y hasta) antes de publicar", "warning");
+      const r = await pb.post(url("PublicarPromocion", "token=" + p.token));
+      if (r !== undefined) { pb.notify(r); lista.recargar(); }
+    }
+
+    async function retirar(p) {
+      if (["Publicado", "Programado", "Vencido"].indexOf(p.estado) < 0) return pb.notify("Solo se retira lo publicado", "warning");
+      if (!await pb.ui.confirmar("Retirar imagen", "¿Desea retirar <b>" + pb.esc(p.codigo) + "</b>? Deja de mostrarse de inmediato.", "Retirar", "danger", "clear")) return;
+      const r = await pb.post(url("RetirarPromocion", "token=" + p.token));
+      if (r !== undefined) { pb.notify(p.codigo + " retirada: deja de mostrarse"); lista.recargar(); }
+    }
+
+    async function eliminar(p) {
+      if (p.estado !== "Borrador") return pb.notify("Solo se eliminan borradores; lo publicado se retira", "warning");
+      if (!await pb.ui.confirmar("Eliminar imagen", "¿Desea eliminar <b>" + pb.esc(p.codigo) + "</b>? Esta acción no se puede deshacer.", "Eliminar", "danger", "trash")) return;
+      if (await pb.post(url("EliminarPromocion", "token=" + p.token)) !== undefined) { pb.notify("Registro " + p.codigo + " eliminado"); lista.recargar(); }
+    }
+
+    async function ficha(token, modo) {
+      const [d, auds] = await Promise.all([token ? pb.get(url("Promocion", "token=" + token)) : null, cargarAudiencias()]);
+      if (token && !d) return;
+      if (modo === "edicion" && d.estado === "Retirado") pb.notify("Está retirada: puede corregirla y volver a publicarla", "info");
+      const datos = d ? { codigo: d.codigo, titulo: d.titulo, ubicacion: d.ubicacion, desde: d.desde ? pb.aFecha(d.desde) : null, hasta: d.hasta ? pb.aFecha(d.hasta) : null,
+                          audiencia: d.audiencia, orden: d.orden, textoAlternativo: d.textoAlternativo || "", enlace: d.enlace || "", estado: d.estado,
+                          publicado: d.publicadoPor ? d.publicadoPor + " · " + pb.fechaHora(d.fechaPublicacion) : "—" }
+                      : { codigo: "(se asigna al guardar)", titulo: "", ubicacion: "Panel principal", desde: null, hasta: null, audiencia: "Todos", orden: 1,
+                          textoAlternativo: "", enlace: "", estado: "Borrador", publicado: "—" };
+      let archivo = null;
+      pb.ui.detalle({
+        $c, modulo: "Marketing", titulo: "Imágenes promocionales", modo, nombre: d && d.codigo, token: d && d.token, datos,
+        soloLectura: modo === "consulta" && !pb.can("promos", "editar"),
+        items: ro => [
+          { dataField: "codigo", label: { text: "Código (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "titulo", label: { text: "Título" }, isRequired: !ro, editorOptions: { maxLength: 200 } },
+          { dataField: "ubicacion", label: { text: "Ubicación" }, editorType: "dxSelectBox", isRequired: !ro, editorOptions: { items: mkt.UBICACIONES } },
+          { dataField: "desde", label: { text: "Vigente desde" }, editorType: "dxDateBox", editorOptions: { displayFormat: "dd/MM/yyyy" } },
+          { dataField: "hasta", label: { text: "Vigente hasta" }, editorType: "dxDateBox", editorOptions: { displayFormat: "dd/MM/yyyy" },
+            validationRules: [{ type: "custom", message: "No puede ser anterior al inicio", validationCallback: o => !o.value || !datos.desde || o.value >= datos.desde }] },
+          { dataField: "audiencia", label: { text: "Audiencia" }, editorType: "dxSelectBox", isRequired: !ro, editorOptions: { items: auds, searchEnabled: true } },
+          { dataField: "orden", label: { text: "Orden en el carrusel" }, editorType: "dxNumberBox", isRequired: !ro, editorOptions: { min: 1, max: 99, showSpinButtons: true } },
+          { dataField: "textoAlternativo", label: { text: "Texto alternativo (accesibilidad)" }, editorOptions: { maxLength: 250 } },
+          { dataField: "enlace", label: { text: "Enlace al hacer clic (opcional)" }, editorOptions: { maxLength: 400, placeholder: "https://…" },
+            validationRules: [{ type: "pattern", pattern: /^(https:\/\/\S+)?$/, message: "Use una dirección https://" }] },
+          { dataField: "estado", label: { text: "Estado (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "publicado", label: { text: "Publicado por (calculado)" }, editorOptions: { readOnly: true } }
+        ],
+        extra: ($x, ro) => {
+          const $i = $('<div class="card pad stack">').appendTo($x);
+          $i.append("<h2>Imagen promocional</h2>");
+          const $prev = $('<div class="promo-ficha">').appendTo($i);
+          if (d && d.tieneImagen) $prev.append(mkt.slide(d)); else $prev.append($('<p class="muted" style="margin:16px">').text("Sin imagen. Hasta cargarla no se puede publicar."));
+          if (ro) return;
+          $i.append($('<p class="muted" style="margin:0">').text("JPG o PNG hasta 2 MB. Panel principal: 1200 × 300 px (4:1) o más ancha. Inicio de sesión: 1920 × 1080 px (16:9), de fondo a pantalla completa. El título se muestra sobre la imagen: use imágenes sin texto. Reemplaza la imagen actual al guardar."));
+          $("<div>").appendTo($i).dxFileUploader({
+            multiple: false, uploadMode: "useForm", accept: EXT.join(","), allowedFileExtensions: EXT, maxFileSize: MAX,
+            selectButtonText: "Elegir imagen", labelText: "o arrástrela aquí", invalidFileExtensionMessage: "Solo JPG o PNG", invalidMaxFileSizeMessage: "Supera 2 MB",
+            onValueChanged: e => {
+              const f = (e.value || [])[0];
+              archivo = f && EXT.some(x => f.name.toLowerCase().endsWith(x)) && f.size <= MAX ? f : null;
+              $prev.empty();
+              if (archivo) $prev.append($('<img class="promo-img">').attr({ src: URL.createObjectURL(archivo), alt: "Vista previa de " + archivo.name }));
+              else if (d && d.tieneImagen) $prev.append(mkt.slide(d));
+            }
+          });
+        },
+        alGuardar: async f => {
+          const g = await pb.post(url("GuardarPromocion", d ? "token=" + d.token : ""), { titulo: f.titulo, ubicacion: f.ubicacion, textoAlternativo: f.textoAlternativo || null,
+            enlace: f.enlace || null, desde: iso(f.desde), hasta: iso(f.hasta), audiencia: f.audiencia, orden: f.orden });
+          if (g === undefined) return;
+          if (archivo) {
+            const fd = new FormData(); fd.append("archivo", archivo, archivo.name);
+            const r = await fetch(url("SubirImagen", "token=" + g.token), { method: "POST", headers: { RequestVerificationToken: pb.token() }, body: fd }).then(pb._leer);
+            if (r === undefined) return ficha(g.token, "edicion");
+          }
+          pb.notify("Registro guardado correctamente" + (archivo ? " con su imagen" : ""));
+          listado();
+        },
+        alEditar: () => ficha(token, "edicion"),
+        alVolver: listado
+      });
+    }
+
+    listado();
+  });
+</script>
+}

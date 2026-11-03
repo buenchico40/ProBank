@@ -1,0 +1,99 @@
+@{ ViewData["Title"] = "Cuentas técnicas"; ViewData["Opcion"] = "cuentas"; }
+@section Scripts {
+<script src="~/js/boveda.js" asp-append-version="true"></script>
+<script>
+  // CRE-01 a CRE-03: cuentas técnicas con su rotación (Activo, Por rotar 15 días antes, Rotación vencida o Inactivo) y su contraseña
+  // cifrada con Always Encrypted, visible solo para los miembros de su grupo de acceso. Mostrar y copiar quedan en la auditoría.
+  pb.listo.then(() => {
+    const $c = $("#content"), url = boveda.url;
+    const TIPOS = ["Cuenta de servicio de Entra ID", "Cuenta de servicio del AD (on-premise)", "Cuenta de base de datos", boveda.IDENTIDAD];
+    const iso = v => { if (!v) return null; const x = v instanceof Date ? v : pb.aFecha(v); return x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0") + "-" + String(x.getDate()).padStart(2, "0"); };
+    const proxima = x => x.tipo === boveda.IDENTIDAD ? "No aplica" : pb.fecha(x.proximaRotacion);
+    let lista = null;
+
+    function listado() {
+      $c.empty();
+      lista = pb.ui.grid({
+        $c, modulo: "Bóveda", titulo: "Cuentas técnicas", opcion: "cuentas", clave: "token",
+        cargar: () => pb.get(url("Cuentas")),
+        columnas: [
+          { campo: "nombre", titulo: "Cuenta", ancho: 180 }, { campo: "tipo", titulo: "Tipo" }, { campo: "sistema", titulo: "Sistema" },
+          { campo: "responsable", titulo: "Responsable" }, { campo: "privilegios", titulo: "Privilegios" },
+          { campo: "ultimaRotacion", titulo: "Última rotación", formato: "fecha" }, { campo: "proximaRotacion", titulo: "Próxima rotación", valor: proxima },
+          { campo: "diasParaRotar", titulo: "Días para rotar", valor: x => x.tipo === boveda.IDENTIDAD ? "—" : boveda.dias(x.diasParaRotar) },
+          { campo: "estado", titulo: "Estado", pill: true }, { campo: "grupoCodigo", titulo: "Grupo de acceso", valor: x => x.grupoCodigo || "—" }
+        ],
+        anulada: x => !x.activo,
+        botones: [
+          { text: "Nuevo", icon: "add", type: "default", accion: "crear", onClick: () => ficha(null, "nuevo") },
+          { text: "Editar", icon: "edit", accion: "editar", fila: true, onClick: x => ficha(x.token, "edicion") },
+          { text: "Cambiar credencial", icon: "key", type: "default", accion: "editar", fila: true, onClick: x => {
+            if (x.tipo === boveda.IDENTIDAD) return pb.notify("Las identidades administradas no requieren rotación de clave", "info");
+            boveda.cambiar("cuentas", x, () => lista.recargar());
+          } }
+        ],
+        alAbrir: x => ficha(x.token, "consulta"),
+        detalle: async ($e, x) => {
+          pb.ui.mdHead($e, [x.nombre, x.tipo, x.sistema, x.responsable, x.privilegios || ""].filter(Boolean), x.estado);
+          const $h = $("<div>").appendTo($e), $p = $("<div>").appendTo($e);
+          const h = await boveda.panel($p, "cuentas", x, () => lista.recargar());
+          if (x.tipo !== boveda.IDENTIDAD && h) pb.ui.mdGrid($h, "Historial de rotaciones", [["v", "Versión"], ["f", "Fecha"], ["u", "Registrado por"], ["p", "Próxima rotación"], ["n", "Nota"]],
+            h.versiones.map(v => ({ v: "v" + v.version + (v.vigente ? " (vigente)" : ""), f: pb.fechaHora(v.fecha), u: v.registradoPor, p: pb.fecha(v.vence), n: v.nota || "—" })),
+            "Aún no se ha guardado la contraseña.");
+        }
+      });
+    }
+
+    async function ficha(token, modo) {
+      const [d, grupos] = await Promise.all([token ? pb.get(url("Cuenta", "token=" + token)) : null, pb.get(url("Grupos"))]);
+      if (token && !d) return;
+      const activos = (grupos || []).filter(g => g.estado === "Activo" || (d && g.token === d.grupoToken)).map(g => ({ id: g.token, t: g.codigo + " · " + g.nombre }));
+      const datos = d ? { nombre: d.nombre, tipo: d.tipo, sistema: d.sistema, responsable: d.responsable, privilegios: d.privilegios || "", grupo: d.grupoToken,
+                          proximaRotacion: d.proximaRotacion ? pb.aFecha(d.proximaRotacion) : null, activo: d.activo, estado: d.estado,
+                          ultima: pb.fecha(d.ultimaRotacion) }
+                      : { nombre: "", tipo: TIPOS[0], sistema: "", responsable: "", privilegios: "", grupo: null, proximaRotacion: null, activo: true, estado: "—", ultima: "—" };
+      let form = null;
+      const identidad = () => (form ? form.option("formData").tipo : datos.tipo) === boveda.IDENTIDAD;
+      const ajustar = () => { if (!form) return; const i = identidad(); form.itemOption("grupo", "visible", !i); form.itemOption("proximaRotacion", "visible", !i); };
+      form = pb.ui.detalle({
+        $c, modulo: "Bóveda", titulo: "Cuentas técnicas", modo, nombre: d && d.nombre, token: d && d.token, datos,
+        soloLectura: modo === "consulta" && !pb.can("cuentas", "editar"),
+        items: ro => [
+          { dataField: "nombre", label: { text: "Cuenta" }, isRequired: !ro, editorOptions: { maxLength: 150 } },
+          { dataField: "tipo", label: { text: "Tipo" }, editorType: "dxSelectBox", isRequired: !ro, editorOptions: { items: TIPOS, onValueChanged: () => setTimeout(ajustar) } },
+          { dataField: "sistema", label: { text: "Sistema" }, isRequired: !ro, editorOptions: { maxLength: 150 } },
+          { dataField: "responsable", label: { text: "Responsable" }, isRequired: !ro, editorOptions: { maxLength: 100, placeholder: "Área o equipo" } },
+          { dataField: "grupo", label: { text: "Grupo de acceso (quién ve la contraseña)" }, editorType: "dxSelectBox", visible: datos.tipo !== boveda.IDENTIDAD,
+            editorOptions: { items: activos, valueExpr: "id", displayExpr: "t", searchEnabled: true },
+            validationRules: [{ type: "custom", message: "Elija el grupo de acceso", validationCallback: o => identidad() || !!o.value }] },
+          { dataField: "proximaRotacion", label: { text: "Próxima rotación" }, editorType: "dxDateBox", visible: datos.tipo !== boveda.IDENTIDAD,
+            editorOptions: { displayFormat: "dd/MM/yyyy", showClearButton: true } },
+          { dataField: "privilegios", label: { text: "Privilegios" }, colSpan: 2, editorOptions: { maxLength: 300 } },
+          { dataField: "activo", label: { text: "Activa" }, editorType: "dxSwitch", editorOptions: { switchedOnText: "Sí", switchedOffText: "No" } },
+          { dataField: "ultima", label: { text: "Última rotación (calculada)" }, editorOptions: { readOnly: true } },
+          { dataField: "estado", label: { text: "Estado (calculado)" }, editorOptions: { readOnly: true } }
+        ],
+        extra: $x => {
+          if (!d) return pb.ui.mdNote($x, "Guarde la cuenta para registrar su contraseña: se cifra con Always Encrypted y solo la ven los miembros del grupo.");
+          const $cp = $('<div class="card pad stack">').appendTo($x);
+          $cp.append("<h2>Credencial</h2>");
+          boveda.panel($cp, "cuentas", d, () => ficha(token, modo));
+        },
+        alGuardar: async f => {
+          const i = f.tipo === boveda.IDENTIDAD;
+          const r = await pb.post(url("GuardarCuenta", d ? "token=" + d.token : ""), { nombre: f.nombre, tipo: f.tipo, sistema: f.sistema, responsable: f.responsable,
+            privilegios: f.privilegios || null, grupo: i ? null : f.grupo, proximaRotacion: i ? null : iso(f.proximaRotacion), activo: !!f.activo });
+          if (r === undefined) return;
+          pb.notify("Cuenta técnica guardada correctamente");
+          if (!d && !i) return ficha(r.token, "consulta");
+          listado();
+        },
+        alEditar: () => ficha(token, "edicion"),
+        alVolver: listado
+      });
+    }
+
+    listado();
+  });
+</script>
+}

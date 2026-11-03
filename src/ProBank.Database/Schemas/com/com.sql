@@ -1,2 +1,2 @@
--- Compras y pagos TI
+-- Presupuesto
 CREATE SCHEMA [com] AUTHORIZATION [dbo];

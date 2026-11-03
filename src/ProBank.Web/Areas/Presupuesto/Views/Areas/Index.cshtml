@@ -1,0 +1,56 @@
+@{ ViewData["Title"] = "Áreas del presupuesto"; ViewData["Opcion"] = "areaspres"; }
+@section Scripts {
+<script src="~/js/presupuesto.js" asp-append-version="true"></script>
+<script>
+  // Áreas que llevan presupuesto (com.Area). El código no cambia porque lo usan las partidas; un área inactiva conserva sus
+  // partidas, pero no recibe nuevas ni prepara borrador.
+  pb.listo.then(() => {
+    const $c = $("#content"), url = pres.url;
+    let lista = null;
+
+    function listado() {
+      $c.empty();
+      lista = pb.ui.grid({
+        $c, modulo: "Presupuesto", titulo: "Áreas del presupuesto", opcion: "areaspres", clave: "codigo",
+        antes: $x => $('<div class="card pad">').appendTo($x)
+          .append($('<p class="muted" style="margin:0">').text("Cada área lleva su propio presupuesto por año. Las áreas activas aparecen en «Presupuesto por área»; al desactivar una, conserva sus partidas pero no recibe nuevas.")),
+        cargar: () => pb.get(url("Areas")),
+        columnas: [
+          { campo: "codigo", titulo: "Código" }, { campo: "nombre", titulo: "Nombre" },
+          { campo: "partidas", titulo: "Partidas" }, { campo: "activa", titulo: "Estado", valor: a => a.activa ? "Activo" : "Inactivo", pill: true }
+        ],
+        anulada: a => !a.activa,
+        botones: [
+          { text: "Nuevo", icon: "add", type: "default", accion: "crear", onClick: () => ficha(null, "nuevo") },
+          { text: "Editar", icon: "edit", accion: "editar", fila: true, onClick: a => ficha(a, "edicion") }
+        ],
+        alAbrir: a => ficha(a, "consulta")
+      });
+    }
+
+    function ficha(a, modo) {
+      const datos = a ? { codigo: a.codigo, nombre: a.nombre, activa: a.activa, partidas: String(a.partidas) } : { codigo: "", nombre: "", activa: true, partidas: "0" };
+      pb.ui.detalle({
+        $c, modulo: "Presupuesto", titulo: "Áreas del presupuesto", modo, nombre: a && a.codigo, token: a && a.codigo, datos,
+        soloLectura: modo === "consulta" && !pb.can("areaspres", "editar"),
+        items: ro => [
+          { dataField: "codigo", label: { text: "Código" }, isRequired: !ro, helpText: a ? "El código no cambia." : "De 2 a 30 letras o números, sin espacios (por ejemplo MKT).",
+            editorOptions: { maxLength: 30, readOnly: ro || !!a, inputAttr: { style: "text-transform:uppercase" } } },
+          { dataField: "nombre", label: { text: "Nombre" }, isRequired: !ro, editorOptions: { maxLength: 100 } },
+          { dataField: "activa", label: { text: "Activa" }, editorType: "dxSwitch", editorOptions: { switchedOnText: "Sí", switchedOffText: "No" } },
+          { dataField: "partidas", label: { text: "Partidas (calculado)" }, editorOptions: { readOnly: true } }
+        ],
+        alGuardar: async f => {
+          const r = await pb.post(url("GuardarArea", a ? "codigo=" + encodeURIComponent(a.codigo) : ""), { codigo: (f.codigo || "").trim().toUpperCase(), nombre: f.nombre, activa: !!f.activa });
+          if (r === undefined) return;
+          pb.notify(r); listado();
+        },
+        alEditar: () => ficha(a, "edicion"),
+        alVolver: listado
+      });
+    }
+
+    listado();
+  });
+</script>
+}

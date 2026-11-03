@@ -8,7 +8,8 @@ CREATE TABLE [pry].[Informe]
     Hasta          DATE          NOT NULL,
     Incluye        NVARCHAR(100) NOT NULL CONSTRAINT DF_Informe_Incluye DEFAULT (N'Bitácora y acuerdos'),
     Estado         VARCHAR(20)   NOT NULL CONSTRAINT DF_Informe_Estado DEFAULT ('Borrador') CONSTRAINT CK_Informe_Estado CHECK (Estado IN ('Borrador','Completado')),
-    ContenidoHtml  NVARCHAR(MAX) NULL,
+    ContenidoHtml  NVARCHAR(MAX) NULL,           -- copia HTML de los informes generados antes del reporte PDF
+    RutaPdf        VARCHAR(300)  NULL,           -- copia en PDF (DevExpress Reporting) en Blob Storage, contenedor adjuntos
     CreadoPorId    INT           NOT NULL CONSTRAINT FK_Informe_Creador REFERENCES seg.Usuario (UsuarioId),
     GeneradoPorId  INT           NULL CONSTRAINT FK_Informe_Generador REFERENCES seg.Usuario (UsuarioId),
     FechaGenerado  DATETIME2(0)  NULL,

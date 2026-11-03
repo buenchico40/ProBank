@@ -62,6 +62,15 @@ public interface IUnitOfWork
     Task Ejecutar(Func<CancellationToken, Task> trabajo, CancellationToken ct);
 }
 
+/// <summary>Archivos de la aplicación: Blob Storage en Azure; una carpeta local cuando no hay cuenta configurada.</summary>
+public interface IAlmacenArchivos
+{
+    Task Guardar(string contenedor, string ruta, Stream contenido, string tipo, CancellationToken ct);
+    /// <summary>Null si el archivo no existe.</summary>
+    Task<Stream?> Abrir(string contenedor, string ruta, CancellationToken ct);
+    Task Eliminar(string contenedor, string ruta, CancellationToken ct);
+}
+
 public interface IMailSender
 {
     Task Enviar(IReadOnlyList<string> destinatarios, string asunto, string cuerpoHtml,

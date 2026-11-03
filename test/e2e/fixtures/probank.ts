@@ -17,14 +17,11 @@ export class App {
   }
 
   async ir(modulo: string, opcion: string) {
-    if (this.esPrototipo) {
-      const menu = this.page.locator('#accordion');
-      const op = menu.locator('[data-k]').getByText(opcion, { exact: true }).first();
-      if (!(await op.isVisible())) await menu.getByText(modulo, { exact: true }).first().click();
-      await op.click();
-    } else {
-      await this.page.getByRole('navigation').getByRole('link', { name: new RegExp(modulo) }).click();
-    }
+    // Maqueta y aplicación usan el mismo menú en acordeón: el módulo despliega sus opciones ([data-k])
+    const menu = this.page.locator('#accordion');
+    const op = menu.locator('[data-k]').getByText(opcion, { exact: true }).first();
+    if (!(await op.isVisible())) await menu.getByText(modulo, { exact: true }).first().click();
+    await op.click();
     await expect(this.page.locator('h1').first()).toBeVisible();
   }
 }

@@ -1,0 +1,274 @@
+@{ ViewData["Title"] = "Catálogo de consultas"; ViewData["Opcion"] = "consultas"; }
+@section Scripts {
+<script src="~/js/consultas.js" asp-append-version="true"></script>
+<script>
+  // SQL-01 a SQL-04, SQL-07 y SQL-08: catálogo de consultas. Cada consulta ejecuta un procedimiento almacenado; sus parámetros
+  // y columnas se leen de la base, se configuran (etiqueta, control, valor fijo o variable) y se publica para sus roles.
+  pb.listo.then(async () => {
+    const $c = $("#content"), url = cq.url;
+    let lista = null;
+    const opciones = await pb.get(url("Opciones"));
+    if (!opciones) return;
+    const DIAS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+    const TIPOS = [{ k: "Texto", t: "Texto" }, { k: "Numero", t: "Número" }, { k: "Fecha", t: "Fecha" }, { k: "Lista", t: "Lista" }];
+    const cod = x => encodeURIComponent(x.codigo);
+
+    function listado() {
+      $c.empty();
+      lista = pb.ui.grid({
+        $c, modulo: "Consultas dinámicas", titulo: "Catálogo de consultas", opcion: "consultas", clave: "codigo",
+        antes: $x => $('<div class="card pad">').appendTo($x).append($('<p class="muted" style="margin:0">').text(
+          "Solo procedimientos almacenados (esquema.nombre): no se aceptan consultas escritas a mano. Sus parámetros y columnas se leen de la base de datos; al publicar, la consulta queda disponible para los roles definidos.")),
+        cargar: () => pb.get(url("Catalogo")),
+        columnas: [
+          { campo: "codigo", titulo: "Código" }, { campo: "nombre", titulo: "Nombre" }, { campo: "procedimiento", titulo: "Procedimiento almacenado", valor: q => cq.corte(q.procedimiento) },
+          { campo: "conexiones", titulo: "Bases de datos permitidas" }, { campo: "roles", titulo: "Roles que ejecutan" },
+          { campo: "aprobadores", titulo: "Aprobadores de la ejecución", valor: q => q.aprobadores || "Ninguno" },
+          { campo: "tiempoMaximoSeg", titulo: "Tiempo máximo (s)" }, { campo: "limiteFilas", titulo: "Límite de filas", valor: q => q.limiteFilas.toLocaleString("es-EC") },
+          { campo: "estado", titulo: "Estado", pill: true }
+        ],
+        botones: [
+          { text: "Nuevo", icon: "add", type: "default", accion: "crear", onClick: () => ficha(null, "nuevo") },
+          { text: "Editar", icon: "edit", accion: "editar", fila: true, onClick: q => ficha(q, "edicion") },
+          { text: "Eliminar", icon: "trash", accion: "eliminar", fila: true, onClick: eliminar },
+          { text: "Leer definición", icon: "refresh", accion: "editar", fila: true, onClick: leerDefinicion },
+          { text: "Configurar parámetros", icon: "preferences", accion: "editar", fila: true, onClick: q => parametros(q.codigo) },
+          { text: "Ejecutar consulta", icon: "runner", onClick: q => pb.can("ejecuciones", "crear") ? cq.ejecutar(q && q.estado === "Publicada" ? q.codigo : null)
+            : pb.notify("Su rol no puede ejecutar consultas", "warning") },
+          { text: "Programar envío", icon: "event", accion: "editar", fila: true, onClick: programarDesdeBarra },
+          { text: "Publicar", icon: "upload", accion: "aprobar", fila: true, onClick: q => estado(q, "Publicar") },
+          { text: "Retirar", icon: "revert", accion: "aprobar", fila: true, onClick: q => estado(q, "Retirar") }
+        ],
+        alAbrir: q => ficha(q, "consulta"),
+        detalle: async ($e, q) => {
+          const d = await pb.get(url("Consulta", "codigo=" + cod(q)));
+          if (!d) return;
+          pb.ui.mdHead($e, [d.codigo, d.nombre, d.procedimiento, "Tiempo máximo " + d.tiempoMaximoSeg + " s", "Hasta " + d.limiteFilas.toLocaleString("es-EC") + " filas"], d.estado);
+          if (d.descripcion) pb.ui.mdNote($e, d.descripcion);
+          pb.ui.mdGrid($e, "Parámetros del procedimiento" + (d.definicionLeida ? " (leídos el " + pb.fechaHora(d.definicionLeida) + ")" : ""),
+            [["n", "Parámetro"], ["l", "Etiqueta"], ["t", "Control"], ["d", "Valor por defecto"], ["o", "Obligatorio"]],
+            d.parametros.map(p => ({ n: p.nombre, l: p.etiqueta, t: tipoTexto(p), d: p.valorDefecto || "—", o: p.obligatorio ? "Sí" : "No" })),
+            d.definicionLeida ? "Sin parámetros." : "Aún no se lee la definición del procedimiento.");
+          pb.ui.mdGrid($e, "Columnas del resultado", [["n", "Columna"], ["t", "Tipo SQL"]], d.columnas.map(c => ({ n: c.nombre, t: c.tipo })),
+            d.definicionLeida ? "Se conocen al ejecutarla." : "—");
+          const ap = d.aprobadores.map(a => a.nombre);
+          pb.ui.mdNote($e, "Bases de datos: " + (d.conexiones.map(x => x.nombre + (x.estado === "Activo" ? "" : " (inactiva)")).join(", ") || "ninguna") +
+            ". Roles: " + (d.roles.join(", ") || "ninguno") + ". " + (ap.length > 1 ? "Cada ejecución la deben aprobar todos: " + ap.join(", ") + "."
+              : ap.length ? "Cada ejecución la aprueba " + ap[0] + "." : "No requiere aprobación para ejecutarse."));
+          pb.ui.mdGrid($e, "Últimas ejecuciones", [["e", "Ejecución"], ["b", "Base de datos"], ["u", "Solicitada por"], ["f", "Fecha"], ["s", "Estado"]],
+            d.ultimas.map(x => ({ e: x.codigo, b: x.base, u: x.solicitadaPor, f: pb.fechaHora(x.fecha), s: x.estado })), "Aún no se ha ejecutado.");
+          envios($e, d);
+          const acc = [];
+          if (pb.can("ejecuciones", "crear")) acc.push({ text: "Ejecutar consulta", icon: "runner", type: "default", disabled: d.estado !== "Publicada", onClick: () => cq.ejecutar(d.codigo) });
+          if (pb.can("consultas", "editar")) acc.push({ text: "Leer definición", icon: "refresh", onClick: () => leerDefinicion(q) },
+            { text: "Configurar parámetros", icon: "preferences", disabled: !d.parametros.length, onClick: () => parametros(d.codigo) });
+          if (pb.can("consultas", "aprobar")) acc.push(d.estado === "Publicada" ? { text: "Retirar consulta", icon: "revert", onClick: () => estado(q, "Retirar") }
+            : { text: "Publicar consulta", icon: "upload", onClick: () => estado(q, "Publicar") });
+          if (acc.length) pb.ui.mdActions($e, acc);
+        }
+      });
+    }
+
+    const tipoTexto = p => (TIPOS.find(t => t.k === p.tipo) || { t: p.tipo }).t + (p.tipo === "Lista" && p.opciones ? ": " + p.opciones.split(",").join(", ") : "") +
+      (p.tipoSql ? " · " + p.tipoSql : "");
+
+    // ---------- Envíos programados (SQL-07 y SQL-08) ----------
+    function envios($e, d) {
+      $e.append($('<div class="mdtitle">').text("Envíos programados por correo"));
+      if (d.aprobadores.length) return pb.ui.mdNote($e, "La consulta requiere aprobación en cada ejecución: no se puede enviar programada" + (d.programaciones.length ? " (sus envíos están en pausa)." : "."));
+      const frec = p => p.frecuencia === "Semanal" ? "Semanal: " + p.dias.map(x => DIAS[x].slice(0, 3).toLowerCase()).join(", ")
+        : p.frecuencia === "Mensual" ? "Mensual: " + (p.diaDelMes ? "día " + p.diaDelMes : "último día") : "Diaria";
+      if (!d.programaciones.length) pb.ui.mdNote($e, "Sin envíos programados.");
+      d.programaciones.forEach(p => {
+        const $r = $('<div class="card pad" style="margin:0 0 8px;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center">').appendTo($e);
+        $r.append($("<b>").text(p.codigo)).append($("<span>").text(frec(p) + " · " + p.hora + " · " + p.formato.toUpperCase() + " · " + p.base))
+          .append($('<span class="muted">').text("A: " + p.destinatarios.join(", ")))
+          .append($('<span class="muted">').text("Próxima: " + pb.fechaHora(p.proximaEjecucion) + (p.ultimoResultado ? " · Última: " + p.ultimoResultado : "")))
+          .append($("<span>").addClass(pb.pillCls(p.estado === "Activa" ? "Activo" : "Inactivo")).text(p.estado));
+        if (pb.can("consultas", "editar")) {
+          pb.ui.button($("<div>").appendTo($r), { text: "Editar", icon: "edit", onClick: () => programar(d, p) });
+          pb.ui.button($("<div>").appendTo($r), { text: "Eliminar", icon: "trash", onClick: () => eliminarEnvio(p) });
+        }
+      });
+      if (pb.can("consultas", "editar")) pb.ui.mdActions($e, [{ text: "Programar envío", icon: "event", disabled: d.estado !== "Publicada", onClick: () => programar(d, null) }]);
+    }
+
+    // Desde la barra: explica por qué no se puede programar y, si se puede, abre la ventana (los envíos ya creados se editan en el detalle)
+    async function programarDesdeBarra(q) {
+      if (q.estado !== "Publicada") return pb.notify("Solo se programan consultas publicadas: publique " + q.codigo + " primero", "warning");
+      const d = await pb.get(url("Consulta", "codigo=" + cod(q)));
+      if (!d) return;
+      if (d.aprobadores.length) return pb.notify(q.codigo + " requiere aprobación en cada ejecución: no se puede enviar programada", "warning");
+      if (d.programaciones.length) pb.notify(q.codigo + " ya tiene " + d.programaciones.length + " envío(s): despliegue la fila para editarlos", "info");
+      programar(d, null);
+    }
+
+    function programar(d, p) {
+      const data = { db: p ? p.conexionCodigo : (d.conexiones.find(x => x.estado === "Activo") || {}).codigo, frecuencia: p ? p.frecuencia : "Diaria",
+        hora: (() => { const h = (p ? p.hora : "07:00").split(":"); const t = new Date(); t.setHours(+h[0], +h[1], 0, 0); return t; })(),
+        dias: p ? p.dias : [1], diaDelMes: p && p.diaDelMes != null ? p.diaDelMes : 0, formato: p ? p.formato : "xlsx", destinatarios: p ? p.destinatarios.slice() : [], activa: p ? p.estado === "Activa" : true };
+      let form = null;
+      // Parámetros: lo guardado en el envío (variable o valor fijo) sobre la definición; si es nuevo, sus valores por defecto
+      const params = d.parametros.map(x => {
+        if (!p || !(x.nombre in p.parametros)) return x;
+        const v = p.parametros[x.nombre];
+        return Object.assign({}, x, { valorDefecto: v && x.tipo === "Fecha" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v.split("-").reverse().join("/") : v });
+      });
+      const campos = cq.camposParametros(params, opciones.variables, data, () => form);
+      const correos = opciones.usuarios.filter(u => u.correo).map(u => u.correo);
+      const visibles = () => { if (!form) return; form.itemOption("dias", "visible", data.frecuencia === "Semanal"); form.itemOption("diaDelMes", "visible", data.frecuencia === "Mensual"); };
+      pb.ui.openPopup((p ? "Editar envío " + p.codigo : "Programar envío") + " · " + d.codigo, $f => {
+        form = $("<div>").appendTo($f).dxForm({ formData: data, labelLocation: "top", showColonAfterLabel: false, colCountByScreen: { lg: 2, md: 2, sm: 1, xs: 1 }, items: [
+          { dataField: "db", label: { text: "Base de datos" }, editorType: "dxSelectBox", isRequired: true,
+            editorOptions: { items: d.conexiones.filter(x => x.estado === "Activo"), valueExpr: "codigo", displayExpr: "nombre" } },
+          { dataField: "formato", label: { text: "Formato del archivo" }, editorType: "dxSelectBox", isRequired: true,
+            editorOptions: { items: cq.FORMATOS, valueExpr: "id", displayExpr: "text" } },
+          { dataField: "frecuencia", label: { text: "Frecuencia" }, editorType: "dxSelectBox", isRequired: true,
+            editorOptions: { items: ["Diaria", "Semanal", "Mensual"], onValueChanged: () => setTimeout(visibles) } },
+          { dataField: "hora", label: { text: "Hora (Ecuador)" }, editorType: "dxDateBox", isRequired: true, editorOptions: { type: "time", displayFormat: "HH:mm", interval: 15 } },
+          { dataField: "dias", label: { text: "Días de la semana" }, editorType: "dxTagBox", colSpan: 2, visible: data.frecuencia === "Semanal",
+            editorOptions: { items: DIAS.map((t, i) => ({ k: i, t })), valueExpr: "k", displayExpr: "t", showSelectionControls: true, applyValueMode: "instantly" } },
+          { dataField: "diaDelMes", label: { text: "Día del mes (0 = último día)" }, editorType: "dxNumberBox", visible: data.frecuencia === "Mensual",
+            editorOptions: { min: 0, max: 31, showSpinButtons: true, format: "#0" } },
+          { dataField: "destinatarios", label: { text: "Destinatarios" }, editorType: "dxTagBox", isRequired: true, colSpan: 2,
+            helpText: "Elija usuarios o escriba un correo y presione Enter.",
+            editorOptions: { items: correos, acceptCustomValue: true, searchEnabled: true, showSelectionControls: true, applyValueMode: "instantly",
+              onCustomItemCreating: e => { e.customItem = (e.text || "").trim().toLowerCase(); } } },
+          { dataField: "activa", label: { text: "Activa" }, editorType: "dxSwitch", editorOptions: { switchedOnText: "Sí", switchedOffText: "No" } },
+          { colSpan: 2, template: () => $('<div class="mdtitle" style="margin:4px 0 0">').text("Parámetros de cada corrida") }
+        ].concat(campos.items.length ? campos.items : [{ colSpan: 2, template: () => $('<p class="muted" style="margin:0">').text("La consulta no tiene parámetros.") }])
+          .concat([{ colSpan: 2, template: () => $('<p class="muted" style="margin:0">').text("Las variables (Hoy, Fin del mes anterior, Año actual…) se resuelven en cada corrida. El archivo se envía por correo desde el buzón de servicio y cada corrida queda en la auditoría de ejecuciones.") }]) }).dxForm("instance");
+        return form;
+      }, async () => {
+        if (!form.validate().isValid) return false;
+        const pars = {};
+        campos.valores().forEach(v => { pars[v.nombre] = v.variable || v.valor; });
+        const h = data.hora instanceof Date ? data.hora : new Date(data.hora);
+        const r = await pb.post(url("GuardarProgramacion", "consulta=" + encodeURIComponent(d.codigo) + (p ? "&codigo=" + encodeURIComponent(p.codigo) : "")), {
+          conexion: data.db, frecuencia: data.frecuencia, hora: String(h.getHours()).padStart(2, "0") + ":" + String(h.getMinutes()).padStart(2, "0"),
+          dias: data.dias || [], diaDelMes: data.diaDelMes, formato: data.formato, parametros: pars, destinatarios: data.destinatarios || [], activa: !!data.activa });
+        if (r === undefined) return false;
+        pb.notify(r); lista.recargar();
+      }, "Guardar", 720);
+    }
+
+    async function eliminarEnvio(p) {
+      if (!await pb.ui.confirmar("Eliminar envío", "¿Desea eliminar el envío programado <b>" + pb.esc(p.codigo) + "</b>? Sus corridas anteriores siguen en la auditoría.", "Eliminar", "danger", "trash")) return;
+      const r = await pb.post(url("EliminarProgramacion", "codigo=" + encodeURIComponent(p.codigo)));
+      if (r !== undefined) { pb.notify(r); lista.recargar(); }
+    }
+
+    // ---------- Definición y parámetros ----------
+    async function leerDefinicion(q) {
+      const d = await pb.get(url("Consulta", "codigo=" + cod(q)));
+      if (!d) return;
+      const activas = d.conexiones.filter(x => x.estado === "Activo");
+      if (!activas.length) return pb.notify("Asigne una base de datos activa a " + q.codigo + " antes de leer su definición", "warning");
+      const data = { db: activas[0].codigo };
+      pb.ui.openPopup("Leer definición · " + d.codigo, $f => {
+        $f.append($('<p class="muted" style="margin:0 0 8px">').text("Se leen los parámetros de " + d.procedimiento + " (sys.parameters) y las columnas de su primer resultado (sp_describe_first_result_set), sin ejecutarlo. La configuración de los parámetros que ya existían se conserva."));
+        return $("<div>").appendTo($f).dxForm({ formData: data, labelLocation: "top", items: [
+          { dataField: "db", label: { text: "Base de datos" }, editorType: "dxSelectBox", isRequired: true, editorOptions: { items: activas, valueExpr: "codigo", displayExpr: "nombre" } }] }).dxForm("instance");
+      }, async f => {
+        if (!f.validate().isValid) return false;
+        const r = await pb.post(url("LeerDefinicion", "codigo=" + cod(d) + "&conexion=" + encodeURIComponent(data.db)));
+        if (r === undefined) return false;
+        pb.notify(r); lista.recargar();
+      }, "Leer definición", 520, { icono: "refresh" });
+    }
+
+    async function parametros(codigo) {
+      const d = await pb.get(url("Consulta", "codigo=" + encodeURIComponent(codigo)));
+      if (!d) return;
+      if (!d.definicionLeida) return pb.notify("Lea primero la definición del procedimiento de " + codigo, "warning");
+      if (!d.parametros.length) return pb.notify("El procedimiento " + d.procedimiento + " no tiene parámetros", "info");
+      const filas = d.parametros.map(p => Object.assign({}, p));
+      const vars = t => opciones.variables.filter(v => v.tipo === t).map(v => v.nombre);
+      let grid = null;
+      pb.ui.openPopup("Parámetros · " + d.codigo + " · " + d.nombre, $f => {
+        grid = $("<div>").appendTo($f).dxDataGrid({
+          dataSource: filas, keyExpr: "nombre", showBorders: true, columnAutoWidth: true, wordWrapEnabled: true,
+          editing: { mode: "cell", allowUpdating: true }, paging: { enabled: false },
+          columns: [
+            { dataField: "nombre", caption: "Parámetro", allowEditing: false },
+            { dataField: "tipoSql", caption: "Tipo SQL", allowEditing: false },
+            { dataField: "etiqueta", caption: "Etiqueta en pantalla", validationRules: [{ type: "required" }] },
+            { dataField: "tipo", caption: "Control", lookup: { dataSource: TIPOS, valueExpr: "k", displayExpr: "t" } },
+            { dataField: "obligatorio", caption: "Obligatorio", dataType: "boolean" },
+            { dataField: "valorDefecto", caption: "Valor por defecto",
+              editCellTemplate: ($cell, info) => $("<div>").appendTo($cell).dxSelectBox({
+                items: info.data.tipo === "Fecha" ? vars("Fecha") : info.data.tipo === "Numero" ? vars("Numero")
+                  : info.data.tipo === "Lista" ? (info.data.opciones || "").split(",").map(s => s.trim()).filter(Boolean) : [],
+                value: info.value, acceptCustomValue: info.data.tipo !== "Lista", showClearButton: true, placeholder: "(sin valor)",
+                onCustomItemCreating: e => { e.customItem = e.text; }, onValueChanged: e => info.setValue(e.value) }) },
+            { dataField: "opciones", caption: "Opciones de la lista (separadas por coma)" }
+          ]
+        }).dxDataGrid("instance");
+        $f.append($('<p class="muted" style="margin:8px 0 0">').text("Fechas: dd/mm/aaaa o una variable (Hoy, Fin de mes, Inicio del mes anterior…). Números: un valor o Año actual, Año anterior, Mes actual. Las variables se calculan en cada ejecución y quedan con su valor resuelto en la auditoría; al ejecutar, el usuario puede cambiarlas."));
+        return grid;
+      }, async () => {
+        await grid.saveEditData();
+        const r = await pb.post(url("GuardarParametros", "codigo=" + encodeURIComponent(codigo)), { parametros: filas });
+        if (r === undefined) return false;
+        pb.notify(r); lista.recargar();
+      }, "Guardar", 980);
+    }
+
+    async function estado(q, accion) {
+      if (accion === "Publicar" && q.estado === "Publicada") return pb.notify("La consulta " + q.codigo + " ya está publicada", "warning");
+      if (accion === "Retirar" && q.estado !== "Publicada") return pb.notify("Solo se retiran consultas publicadas", "warning");
+      if (accion === "Retirar" && !await pb.ui.confirmar("Retirar consulta", "¿Desea retirar <b>" + pb.esc(q.codigo) + "</b>? Vuelve a Borrador: no se podrá ejecutar ni se enviará programada.", "Retirar", "danger", "revert")) return;
+      const r = await pb.post(url("EstadoConsulta", "codigo=" + cod(q) + "&accion=" + accion));
+      if (r !== undefined) { pb.notify(r); lista.recargar(); }
+    }
+
+    async function eliminar(q) {
+      if (q.estado !== "Borrador") return pb.notify("Solo se eliminan consultas en borrador: retírela primero", "warning");
+      if (!await pb.ui.confirmar("Eliminar consulta", "¿Desea eliminar <b>" + pb.esc(q.codigo + " · " + q.nombre) + "</b>? Esta acción no se puede deshacer.", "Eliminar", "danger", "trash")) return;
+      const r = await pb.post(url("EliminarConsulta", "codigo=" + cod(q)));
+      if (r !== undefined) { pb.notify(r); lista.recargar(); }
+    }
+
+    async function ficha(q, modo) {
+      const d = q ? await pb.get(url("Consulta", "codigo=" + cod(q))) : null;
+      if (q && !d) return;
+      const datos = d ? { codigo: d.codigo, nombre: d.nombre, descripcion: d.descripcion || "", procedimiento: d.procedimiento, tiempoMaximoSeg: d.tiempoMaximoSeg,
+                          limiteFilas: d.limiteFilas, conexiones: d.conexiones.map(x => x.codigo), roles: d.roles.slice(), aprobadores: d.aprobadores.map(a => a.token), estado: d.estado }
+        : { codigo: "(se asigna al guardar)", nombre: "", descripcion: "", procedimiento: "", tiempoMaximoSeg: 30, limiteFilas: 10000, conexiones: [], roles: [], aprobadores: [], estado: "Borrador" };
+      pb.ui.detalle({
+        $c, modulo: "Consultas dinámicas", titulo: "Catálogo de consultas", modo, nombre: d && d.codigo, token: d && d.codigo, datos,
+        soloLectura: modo === "consulta" && !pb.can("consultas", "editar"),
+        items: ro => [
+          { dataField: "codigo", label: { text: "Código (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "nombre", label: { text: "Nombre" }, isRequired: !ro, editorOptions: { maxLength: 150 } },
+          { dataField: "estado", label: { text: "Estado (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "procedimiento", label: { text: "Procedimiento almacenado" }, isRequired: !ro,
+            helpText: "esquema.nombre. Si lo cambia, se borra la definición leída y una consulta publicada vuelve a Borrador.", editorOptions: { maxLength: 257, placeholder: "rpt.usp_SaldosPorProducto" } },
+          { dataField: "tiempoMaximoSeg", label: { text: "Tiempo máximo (s)" }, editorType: "dxNumberBox", isRequired: !ro, editorOptions: { min: 5, max: 600, showSpinButtons: true, format: "#0" } },
+          { dataField: "limiteFilas", label: { text: "Límite de filas" }, editorType: "dxNumberBox", isRequired: !ro, editorOptions: { min: 1, max: 100000, showSpinButtons: true, format: "#,##0" } },
+          { dataField: "descripcion", label: { text: "Descripción" }, colSpan: 3, editorType: "dxTextArea", editorOptions: { maxLength: 500, height: 70 } },
+          { dataField: "conexiones", label: { text: "Bases de datos permitidas" }, editorType: "dxTagBox", colSpan: 3,
+            editorOptions: { items: opciones.conexiones, valueExpr: "codigo", displayExpr: c => c && (c.nombre + (c.estado === "Activo" ? "" : " (inactiva)")), showSelectionControls: true, applyValueMode: "instantly" } },
+          { dataField: "roles", label: { text: "Roles que la ejecutan" }, editorType: "dxTagBox", colSpan: 3,
+            editorOptions: { items: opciones.roles, showSelectionControls: true, applyValueMode: "instantly", searchEnabled: true } },
+          { dataField: "aprobadores", label: { text: "Aprobadores de cada ejecución (opcional)" }, editorType: "dxTagBox", colSpan: 3,
+            helpText: "Si son varios, aprueban todos; quien solicita no aprueba su propia ejecución. Una consulta con aprobadores no se envía programada.",
+            editorOptions: { items: opciones.usuarios, valueExpr: "token", displayExpr: "nombre", showSelectionControls: true, applyValueMode: "instantly", searchEnabled: true,
+              placeholder: "Ninguno: se ejecuta sin aprobación" } }
+        ],
+        alGuardar: async f => {
+          const r = await pb.post(url("GuardarConsulta", d ? "codigo=" + encodeURIComponent(d.codigo) : ""), {
+            nombre: f.nombre, descripcion: f.descripcion, procedimiento: (f.procedimiento || "").trim(), tiempoMaximoSeg: f.tiempoMaximoSeg, limiteFilas: f.limiteFilas,
+            conexiones: f.conexiones || [], roles: f.roles || [], aprobadores: f.aprobadores || [] });
+          if (r === undefined) return;
+          pb.notify(r); listado();
+        },
+        alEditar: () => ficha(q, "edicion"),
+        alVolver: listado
+      });
+    }
+
+    listado();
+  });
+</script>
+}

@@ -23,17 +23,18 @@ USING (VALUES
     ('tareas', N'Portafolio', N'Mis tareas', 32), ('aprobaciones', N'Portafolio', N'Aprobaciones', 33),
     ('acuerdos', N'Portafolio', N'Acuerdos semanales', 34), ('informes', N'Portafolio', N'Informes de seguimiento', 35),
     ('paramproy', N'Portafolio', N'Parametrización', 36),
-    ('presupuesto', N'Compras y pagos TI', N'Presupuesto de TI', 40), ('movimientos', N'Compras y pagos TI', N'Ajustes y movimientos', 41),
-    ('renovaciones', N'Compras y pagos TI', N'Renovaciones de servicios', 42), ('solicitudes', N'Compras y pagos TI', N'Solicitudes de compra', 43),
-    ('pagos', N'Compras y pagos TI', N'Pagos', 44),
+    ('presupuesto', N'Presupuesto', N'Presupuesto por área', 40), ('movimientos', N'Presupuesto', N'Ajustes y movimientos', 41),
+    ('renovaciones', N'Presupuesto', N'Renovaciones de servicios', 42), ('solicitudes', N'Presupuesto', N'Solicitudes de compra', 43),
+    ('pagos', N'Presupuesto', N'Pagos', 44), ('areaspres', N'Presupuesto', N'Áreas del presupuesto', 45),
     ('controles', N'Cumplimiento y auditoría', N'Controles regulatorios', 50), ('auditorias', N'Cumplimiento y auditoría', N'Auditorías', 51),
     ('hallazgos', N'Cumplimiento y auditoría', N'Hallazgos y planes de acción', 52),
-    ('grupos', N'Certificados y secretos', N'Grupos de acceso', 60), ('certificados', N'Certificados y secretos', N'Certificados digitales', 61),
-    ('cuentas', N'Certificados y secretos', N'Cuentas técnicas', 62), ('secretos', N'Certificados y secretos', N'Secretos', 63),
+    ('grupos', N'Bóveda', N'Grupos de acceso', 60), ('certificados', N'Bóveda', N'Certificados digitales', 61),
+    ('cuentas', N'Bóveda', N'Cuentas técnicas', 62), ('secretos', N'Bóveda', N'Secretos', 63),
     ('promos', N'Marketing', N'Imágenes promocionales', 70), ('comunicados', N'Marketing', N'Comunicados', 71),
     ('consultas', N'Consultas dinámicas', N'Catálogo de consultas', 80), ('ejecuciones', N'Consultas dinámicas', N'Ejecuciones y aprobaciones', 81),
     ('audejec', N'Consultas dinámicas', N'Auditoría de ejecuciones', 82), ('conexiones', N'Consultas dinámicas', N'Bases de datos', 83),
-    ('reportes', N'Reportes', N'Reportería por módulo', 90), ('catreportes', N'Reportes', N'Catálogo de reportes', 91)
+    ('reportes', N'Reportes', N'Reportería por módulo', 90), ('catreportes', N'Reportes', N'Catálogo de reportes', 91),
+    ('config', N'Configuración', N'Parámetros generales', 95)
 ) AS s (Opcion, Modulo, Nombre, Orden)
 ON t.Opcion = s.Opcion
 WHEN MATCHED THEN UPDATE SET Modulo = s.Modulo, Nombre = s.Nombre, Orden = s.Orden
@@ -72,6 +73,50 @@ FROM @Nuevas n JOIN seg.Permiso p ON p.Opcion = n.Opcion AND p.Accion = 'editar'
 WHERE n.Operacion = 'INSERT' AND n.Tipo = 'Funcion'
   AND NOT EXISTS (SELECT 1 FROM seg.Permiso x WHERE x.RolId = p.RolId AND x.Opcion = n.Opcion AND x.Accion = n.Accion);
 
+-- Áreas del presupuesto: la opción nueva se concede (una sola vez) a los roles que aprueban el presupuesto; el Administrador
+-- la recibe con todas las demás. Luego se administra en Seguridad › Roles y permisos.
+IF NOT EXISTS (SELECT 1 FROM seg.Permiso WHERE Opcion = 'areaspres')
+    INSERT seg.Permiso (RolId, Opcion, Accion)
+    SELECT DISTINCT p.RolId, a.Opcion, a.Accion
+    FROM seg.Permiso p JOIN seg.Rol r ON r.RolId = p.RolId AND r.Nombre <> 'Administrador'
+    JOIN seg.OpcionAccion a ON a.Opcion = 'areaspres' AND a.Accion IN ('ver', 'crear', 'editar', 'exportar')
+    WHERE p.Opcion = 'presupuesto' AND p.Accion = 'aprobar';
+
+-- Presupuesto: áreas iniciales (por ahora solo TI); solo se insertan, luego se administran en Presupuesto › Áreas del presupuesto
+MERGE com.Area AS t
+USING (VALUES ('TI', N'Tecnología de la información')) AS s (Codigo, Nombre)
+ON t.Codigo = s.Codigo
+WHEN NOT MATCHED THEN INSERT (Codigo, Nombre) VALUES (s.Codigo, s.Nombre);
+
+-- CFG-01: definición de los parámetros globales; el valor inicial solo se pone al crearlos, luego se administra en
+-- Configuración › Parámetros generales (un despliegue nuevo no pisa lo que cambió el administrador).
+MERGE cfg.Parametro AS t
+USING (VALUES
+    ('Correo.Proveedor', N'Correo', N'Proveedor de correo', N'Microsoft 365 (Graph) desde el buzón de servicio; SMTP del banco; Carpeta solo en desarrollo (deja .eml en una carpeta del equipo).',
+        'Lista', N'Graph,Smtp,Carpeta', NULL, NULL, NULL, N'Graph', 1),
+    ('Correo.BuzonServicio', N'Correo', N'Buzón de servicio (Microsoft 365)', N'Desde qué buzón envía Graph. La identidad de la API necesita Mail.Send limitado a este buzón.',
+        'Correo', NULL, NULL, NULL, NULL, NULL, 2),
+    ('Correo.Smtp.Servidor', N'Correo', N'Servidor SMTP', N'Nombre o IP del servidor de correo del banco.', 'Texto', NULL, NULL, NULL, NULL, NULL, 3),
+    ('Correo.Smtp.Puerto', N'Correo', N'Puerto SMTP', N'587 con STARTTLS, 465 con TLS directo, 25 para un relay interno.', 'Numero', NULL, 1, 65535, NULL, N'587', 4),
+    ('Correo.Smtp.Seguridad', N'Correo', N'Cifrado SMTP', N'Ninguna solo para un relay interno sin usuario.', 'Lista', N'StartTls,TlsDirecto,Ninguna', NULL, NULL, NULL, N'StartTls', 5),
+    ('Correo.Smtp.Usuario', N'Correo', N'Usuario SMTP', N'Vacío: relay autorizado por IP, sin usuario ni clave.', 'Texto', NULL, NULL, NULL, NULL, NULL, 6),
+    ('Correo.Smtp.SecretoClave', N'Correo', N'Secreto de Key Vault con la clave SMTP', N'Solo el nombre del secreto (empieza con smtp-); la clave la carga operaciones en Key Vault.',
+        'Secreto', NULL, NULL, NULL, 'smtp-', NULL, 7),
+    ('Correo.Smtp.Remitente', N'Correo', N'Remitente SMTP', N'Correo desde el que salen los envíos por SMTP.', 'Correo', NULL, NULL, NULL, NULL, NULL, 8),
+    ('Correo.NombreRemitente', N'Correo', N'Nombre del remitente', N'Nombre que ven los destinatarios.', 'Texto', NULL, NULL, NULL, NULL, N'ProBank', 9),
+    ('Consultas.DiasConservacionResultados', N'Consultas dinámicas', N'Días que se conservan los resultados',
+        N'Los resultados guardados de las ejecuciones (para verlos y exportarlos) se borran después de estos días; la auditoría se conserva. 0 = no se borran.',
+        'Numero', NULL, 0, 3650, NULL, N'90', 20),
+    ('Consultas.MaximoMBAdjunto', N'Consultas dinámicas', N'Tamaño máximo del adjunto en el correo (MB)',
+        N'Si el archivo de un envío programado lo supera, el correo sale sin adjunto e indica la ejecución para descargarlo desde ProBank.',
+        'Numero', NULL, 1, 25, NULL, N'10', 21)
+) AS s (Clave, Categoria, Nombre, Descripcion, Tipo, Opciones, Minimo, Maximo, Prefijo, Valor, Orden)
+ON t.Clave = s.Clave
+WHEN MATCHED THEN UPDATE SET Categoria = s.Categoria, Nombre = s.Nombre, Descripcion = s.Descripcion, Tipo = s.Tipo, Opciones = s.Opciones,
+    Minimo = s.Minimo, Maximo = s.Maximo, Prefijo = s.Prefijo, Orden = s.Orden
+WHEN NOT MATCHED THEN INSERT (Clave, Categoria, Nombre, Descripcion, Tipo, Opciones, Minimo, Maximo, Prefijo, Valor, Orden)
+    VALUES (s.Clave, s.Categoria, s.Nombre, s.Descripcion, s.Tipo, s.Opciones, s.Minimo, s.Maximo, s.Prefijo, s.Valor, s.Orden);
+
 -- Parámetros de acceso: solo se insertan; luego se administran en Seguridad › Parámetros de acceso
 MERGE seg.ParametroAcceso AS t
 USING (VALUES ('IntentosFallidos', N'5', N'Intentos fallidos antes de bloquear la cuenta', 3, 10, 1),
@@ -80,6 +125,13 @@ USING (VALUES ('IntentosFallidos', N'5', N'Intentos fallidos antes de bloquear l
 ON t.Clave = s.Clave
 WHEN MATCHED THEN UPDATE SET Nombre = s.Nombre, Minimo = s.Minimo, Maximo = s.Maximo, Orden = s.Orden
 WHEN NOT MATCHED THEN INSERT (Clave, Valor, Nombre, Minimo, Maximo, Orden) VALUES (s.Clave, s.Valor, s.Nombre, s.Minimo, s.Maximo, s.Orden);
+
+-- Adjuntos de Portafolio: tipos y tamaño máximo iniciales; solo se insertan, luego se administran en Portafolio › Parametrización
+MERGE pry.ParametroAdjunto AS t
+USING (VALUES ('Item', '.pdf,.doc,.docx,.xls,.xlsx', 10),
+              ('Tarea', '.zip,.sql,.pdf,.doc,.docx', 5)) AS s (Ambito, Extensiones, MaximoMB)
+ON t.Ambito = s.Ambito
+WHEN NOT MATCHED THEN INSERT (Ambito, Extensiones, MaximoMB) VALUES (s.Ambito, s.Extensiones, s.MaximoMB);
 
 -- PRY-09: acciones de Portafolio y sus roles iniciales (los del prototipo); luego se administran en Portafolio › Parametrización
 DECLARE @AccionesNuevas TABLE (Operacion NVARCHAR(10), Clave VARCHAR(40));
@@ -117,15 +169,15 @@ INSERT @Inicial (Rol, Modulo, Opcion, Acciones) VALUES
     ('Analista de coactivas', N'Coactivas', NULL, 'ver,crear,editar,eliminar,exportar,carga,bloquear,levantar,transferir'),
     ('Analista de coactivas', NULL, 'reportes', 'ver,exportar'),
     ('Gerencia de TI', N'Portafolio', NULL, 'ver,crear,editar,eliminar,exportar,aprobar,enviar,cumplir,generar'),
-    ('Gerencia de TI', N'Compras y pagos TI', NULL, 'ver,crear,editar,eliminar,exportar,aprobar'),
+    ('Gerencia de TI', N'Presupuesto', NULL, 'ver,crear,editar,eliminar,exportar,aprobar'),
     ('Gerencia de TI', N'Cumplimiento y auditoría', NULL, 'ver,exportar'),
     ('Gerencia de TI', NULL, 'reportes', 'ver,exportar'), ('Gerencia de TI', NULL, 'catreportes', 'ver,exportar'),
     ('Gerencia de TI', NULL, 'consultas', 'ver,exportar'), ('Gerencia de TI', NULL, 'audejec', 'ver,exportar'),
-    ('Compras TI', N'Compras y pagos TI', NULL, 'ver,crear,editar,exportar'), ('Compras TI', NULL, 'reportes', 'ver'),
+    ('Compras TI', N'Presupuesto', NULL, 'ver,crear,editar,exportar'), ('Compras TI', NULL, 'reportes', 'ver'),
     ('Cumplimiento', N'Cumplimiento y auditoría', NULL, 'ver,crear,editar,eliminar,exportar,aprobar'),
     ('Cumplimiento', NULL, 'auditoria', 'ver,exportar'), ('Cumplimiento', NULL, 'reportes', 'ver,exportar'),
     ('Cumplimiento', NULL, 'audejec', 'ver,exportar'),
-    ('Seguridad de la información', N'Certificados y secretos', NULL, 'ver,crear,editar,eliminar,exportar,aprobar,mostrar,copiar'),
+    ('Seguridad de la información', N'Bóveda', NULL, 'ver,crear,editar,eliminar,exportar,aprobar,mostrar,copiar'),
     ('Seguridad de la información', NULL, 'auditoria', 'ver,exportar'), ('Seguridad de la información', NULL, 'usuarios', 'ver,exportar'),
     ('Seguridad de la información', NULL, 'params', 'ver,exportar'), ('Seguridad de la información', NULL, 'reportes', 'ver'),
     ('Seguridad de la información', NULL, 'consultas', 'ver,exportar'), ('Seguridad de la información', NULL, 'audejec', 'ver,exportar'),

@@ -1,0 +1,125 @@
+@{ ViewData["Title"] = "Renovaciones de servicios"; ViewData["Opcion"] = "renovaciones"; }
+@section Scripts {
+<script src="~/js/presupuesto.js" asp-append-version="true"></script>
+<script>
+  // COM-02 y COM-03: servicios que se renuevan, con el aviso parametrizado por servicio; desde aquí se envía el requerimiento
+  // de compra (crea la solicitud) y se registra la renovación con su nuevo vencimiento.
+  pb.listo.then(() => {
+    const $c = $("#content"), url = pres.url, $$ = pb.dinero;
+    let lista = null;
+    const dias = r => ["Retirado"].indexOf(r.estado) >= 0 ? "—" : r.diasParaVencer < 0 ? "Vencido hace " + (-r.diasParaVencer) + " días" : r.diasParaVencer + " días";
+
+    function listado() {
+      $c.empty();
+      let $aviso = null;
+      lista = pb.ui.grid({
+        $c, modulo: "Presupuesto", titulo: "Renovaciones de servicios", opcion: "renovaciones", clave: "token",
+        antes: $x => { $aviso = $("<div>").appendTo($x); },
+        cargar: async () => {
+          const r = await pb.get(url("Renovaciones"));
+          if (r === undefined) return r;
+          const por = r.filter(x => x.estado === "Por vencer" || x.estado === "Vencido");
+          $aviso.empty();
+          if (por.length) $aviso.append($('<div class="card pad">').append($('<p style="margin:0">').append($("<b>").text(por.length + " servicio(s) por vencer o vencidos: "))
+            .append(document.createTextNode(por.map(x => x.servicio + " (" + dias(x) + ")").join(" · ")))));
+          return r;
+        },
+        columnas: [
+          { campo: "codigo", titulo: "Renovación" }, { campo: "servicio", titulo: "Servicio" }, { campo: "proveedor", titulo: "Proveedor" },
+          { campo: "vence", titulo: "Vence", formato: "fecha" }, { campo: "diasParaVencer", titulo: "Días para vencer", valor: dias },
+          { campo: "montoEstimado", titulo: "Monto estimado", formato: "dinero" },
+          { campo: "presupuestado", titulo: "Presupuesto", valor: r => r.presupuestado ? "Presupuestado" : "No presupuestado", pill: true },
+          { campo: "partida", titulo: "Partida", valor: r => r.partida || "—" }, { campo: "diasAviso", titulo: "Avisar con (días)" },
+          { campo: "estado", titulo: "Estado", pill: true }
+        ],
+        anulada: r => r.estado === "Retirado",
+        botones: [
+          { text: "Nuevo", icon: "add", type: "default", accion: "crear", onClick: () => ficha(null, "nuevo") },
+          { text: "Editar", icon: "edit", accion: "editar", fila: true, onClick: r => ficha(r, "edicion") },
+          { text: "Enviar requerimiento", icon: "send", accion: "crear", fila: true, onClick: requerimiento },
+          { text: "Registrar renovación", icon: "refresh", accion: "editar", fila: true, onClick: renovar },
+          { text: "Retirar", icon: "clear", accion: "eliminar", fila: true, onClick: retirar }
+        ],
+        alAbrir: r => ficha(r, "consulta"),
+        detalle: ($e, r) => {
+          pb.ui.mdHead($e, [r.codigo, r.servicio, r.proveedor, "Vence " + pb.fecha(r.vence) + " (" + dias(r) + ")", $$(r.montoEstimado),
+            r.presupuestado ? "Partida " + r.partida + " · " + r.partidaRubro : "No presupuestado"], r.estado);
+          pb.ui.mdNote($e, "Aviso parametrizado: se avisa " + r.diasAviso + " días antes del vencimiento" + (r.estado === "Por vencer" ? ". Este servicio ya está dentro del plazo de aviso." : "."));
+          pb.ui.mdGrid($e, "Requerimiento de compra", [["sc", "Solicitud"], ["s", "Estado"]], r.solicitud ? [{ sc: r.solicitud, s: r.solicitudEstado }] : [],
+            "Aún no se ha enviado el requerimiento al área de Compras.");
+          const acc = [];
+          if (pb.can("renovaciones", "crear")) acc.push({ text: "Enviar requerimiento de compra", icon: "send", type: "default",
+            disabled: ["Vigente", "Por vencer", "Vencido"].indexOf(r.estado) < 0, onClick: () => requerimiento(r) });
+          if (pb.can("renovaciones", "editar")) acc.push({ text: "Registrar renovación", icon: "refresh", disabled: r.estado === "Retirado", onClick: () => renovar(r) });
+          if (acc.length) pb.ui.mdActions($e, acc);
+        }
+      });
+    }
+
+    async function requerimiento(r) {
+      if (["Vigente", "Por vencer", "Vencido"].indexOf(r.estado) < 0) return pb.notify("La renovación " + r.codigo + " ya tiene requerimiento o está retirada", "warning");
+      if (!await pb.ui.confirmar("Enviar requerimiento", "¿Enviar a Compras el requerimiento de <b>" + pb.esc(r.servicio) + "</b> por " + $$(r.montoEstimado) + "? Se crea la solicitud de compra.", "Enviar", "default", "send")) return;
+      const m = await pb.post(url("Requerimiento", "token=" + r.token));
+      if (m !== undefined) { pb.notify(m); lista.recargar(); }
+    }
+
+    function renovar(r) {
+      if (r.estado === "Retirado") return pb.notify("La renovación está retirada", "warning");
+      const v = pb.aFecha(r.vence), data = { nuevo: new Date(v.getFullYear() + 1, v.getMonth(), v.getDate()) };
+      pb.ui.openPopup("Registrar renovación · " + r.servicio, $f => $("<div>").appendTo($f).dxForm({ formData: data, labelLocation: "top", showColonAfterLabel: false, items: [
+        { template: () => $('<p class="muted" style="margin:0">').text("Vence actualmente el " + pb.fecha(r.vence) + ". Vuelve a avisar " + r.diasAviso + " días antes del nuevo vencimiento.") },
+        { dataField: "nuevo", label: { text: "Nuevo vencimiento" }, editorType: "dxDateBox", isRequired: true, editorOptions: { displayFormat: "dd/MM/yyyy", min: new Date(v.getTime() + 86400000) } }
+      ] }).dxForm("instance"), async f => {
+        if (!f.validate().isValid) return false;
+        const m = await pb.post(url("Renovar", "token=" + r.token), { nuevoVence: pres.iso(data.nuevo) });
+        if (m === undefined) return false;
+        pb.notify(r.codigo + " · " + m); lista.recargar();
+      }, "Registrar", 460, { icono: "refresh" });
+    }
+
+    async function retirar(r) {
+      if (r.estado === "Retirado") return pb.notify("La renovación ya está retirada", "warning");
+      if (!await pb.ui.confirmar("Retirar renovación", "¿Retirar <b>" + pb.esc(r.servicio) + "</b>? Deja de avisar su vencimiento.", "Retirar", "danger", "clear")) return;
+      if (await pb.post(url("RetirarRenovacion", "token=" + r.token)) !== undefined) { pb.notify(r.codigo + " retirada"); lista.recargar(); }
+    }
+
+    async function ficha(r, modo) {
+      if (modo === "edicion" && r.estado === "Retirado") return pb.notify("La renovación está retirada", "warning");
+      const ps = await pres.partidas(true);
+      const datos = r ? { codigo: r.codigo, servicio: r.servicio, proveedor: r.proveedor, vence: pb.aFecha(r.vence), monto: r.montoEstimado, presupuestado: r.presupuestado,
+                          partida: r.partidaToken, aviso: r.diasAviso, dias: dias(r), estado: r.estado }
+                      : { codigo: "(se asigna al guardar)", servicio: "", proveedor: "", vence: null, monto: null, presupuestado: true, partida: null, aviso: 60, dias: "—", estado: "Vigente" };
+      let form;
+      form = pb.ui.detalle({
+        $c, modulo: "Presupuesto", titulo: "Renovaciones de servicios", modo, nombre: r && r.codigo, token: r && r.token, datos,
+        soloLectura: modo === "consulta" && (!pb.can("renovaciones", "editar") || r.estado === "Retirado"),
+        items: ro => [
+          { dataField: "codigo", label: { text: "Renovación (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "servicio", label: { text: "Servicio" }, isRequired: !ro, editorOptions: { maxLength: 150 } },
+          { dataField: "proveedor", label: { text: "Proveedor" }, isRequired: !ro, editorOptions: { maxLength: 150 } },
+          { dataField: "vence", label: { text: "Vence" }, editorType: "dxDateBox", isRequired: !ro, editorOptions: { displayFormat: "dd/MM/yyyy" } },
+          { dataField: "monto", label: { text: "Monto estimado" }, editorType: "dxNumberBox", isRequired: !ro, editorOptions: { format: "$ #,##0.00", min: 0 } },
+          { dataField: "aviso", label: { text: "Avisar con (días)" }, editorType: "dxSelectBox", isRequired: !ro, editorOptions: { items: pres.DIAS_AVISO, acceptCustomValue: true } },
+          { dataField: "presupuestado", label: { text: "Presupuestado" }, editorType: "dxSwitch", editorOptions: { switchedOnText: "Sí", switchedOffText: "No",
+            onValueChanged: e => { if (form) { form.itemOption("partida", "disabled", !e.value); if (!e.value) form.updateData("partida", null); } } } },
+          { dataField: "partida", label: { text: "Partida (activa o del borrador del año siguiente)" }, colSpan: 2, disabled: !datos.presupuestado, editorType: "dxSelectBox",
+            editorOptions: { dataSource: ps, valueExpr: "token", displayExpr: "texto", searchEnabled: true, placeholder: "Elija la partida" } },
+          { dataField: "dias", label: { text: "Días para vencer (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "estado", label: { text: "Estado (calculado)" }, editorOptions: { readOnly: true } }
+        ],
+        alGuardar: async f => {
+          if (f.presupuestado && !f.partida) return pb.notify("Elija la partida o márquela como no presupuestada", "warning");
+          const g = await pb.post(url("GuardarRenovacion", r ? "token=" + r.token : ""), { servicio: f.servicio, proveedor: f.proveedor, vence: pres.iso(f.vence),
+            montoEstimado: f.monto, presupuestado: !!f.presupuestado, partida: f.presupuestado ? f.partida : null, diasAviso: +f.aviso });
+          if (g === undefined) return;
+          pb.notify("Registro guardado correctamente"); listado();
+        },
+        alEditar: () => ficha(r, "edicion"),
+        alVolver: listado
+      });
+    }
+
+    listado();
+  });
+</script>
+}

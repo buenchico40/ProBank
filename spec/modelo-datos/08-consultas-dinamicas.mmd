@@ -5,70 +5,98 @@ erDiagram
   Consulta ||--o{ ConsultaRol : "ejecutan"
   Consulta ||--o{ ConsultaAprobador : "aprueban (opcional)"
   Consulta ||--o{ Ejecucion : genera
-  Ejecucion ||--o{ EjecucionAprobacion : decisiones
+  Conexion ||--o{ Ejecucion : "se ejecuta en"
+  Ejecucion ||--o{ EjecucionAprobador : decisiones
   Ejecucion ||--o{ EjecucionEvento : bitacora
   Consulta ||--o{ Programacion : programa
   Programacion ||--o{ ProgramacionDestinatario : envia
   Conexion {
     int ConexionId PK
-    varchar Codigo
-    nvarchar Nombre
+    varchar Codigo "CNX-NNN"
+    nvarchar Nombre "único"
     varchar Servidor
     varchar BaseDatos
-    varchar Autenticacion
+    varchar Autenticacion "Usuario SQL de solo lectura, Identidad administrada"
     varchar SecretoKeyVault "nombre del secreto, nunca la cadena"
-    varchar Estado
+    varchar Estado "Activo, Inactivo"
   }
   Consulta {
     int ConsultaId PK
-    varchar Codigo
+    varchar Codigo "QRY-NNN"
     nvarchar Nombre
-    sysname Procedimiento "solo SP"
-    int TiempoMaximoSeg
-    int LimiteFilas
+    nvarchar Descripcion
+    nvarchar Procedimiento "solo SP esquema.nombre"
+    int TiempoMaximoSeg "5 a 600"
+    int LimiteFilas "1 a 100000"
     varchar Estado "Borrador, Publicada"
+    nvarchar ColumnasJson "primer resultado"
+    datetime2 DefinicionLeida
+    int CreadoPorId FK "seg.Usuario"
   }
   Parametro {
     int ParametroId PK
     int ConsultaId FK
-    sysname Nombre
+    sysname Nombre "único por consulta"
     nvarchar Etiqueta
-    varchar Tipo
+    varchar Tipo "Texto, Numero, Fecha, Lista"
+    varchar TipoSql
     bit Obligatorio
-    nvarchar ValorDefecto "fijo o variable: Hoy, FinDeMes..."
+    nvarchar ValorDefecto "fijo o variable: Hoy, Fin de mes..."
+    nvarchar Opciones "lista, separadas por coma"
   }
   Ejecucion {
     bigint EjecucionId PK
-    varchar Codigo
+    varchar Codigo "EJE-NNNNNN calculado"
     int ConsultaId FK
     int ConexionId FK
-    int SolicitanteId FK
-    nvarchar ParametrosResueltos
+    int SolicitanteId FK "seg.Usuario"
+    nvarchar ParametrosResueltos "texto auditable"
+    nvarchar ParametrosJson "valores resueltos (lo aprobado)"
+    bit Programada
     int Filas
     int DuracionMs
-    varchar Estado
+    bit Truncado
+    nvarchar RutaResultado "Blob Storage"
+    nvarchar Mensaje "motivo de la falla"
+    varchar Estado "PendienteAprobacion, Aprobada, Rechazada, Ejecutada, Fallida"
+  }
+  EjecucionAprobador {
+    bigint EjecucionId PK,FK
+    int UsuarioId PK,FK
+    varchar Decision "Aprobada, Rechazada"
+    nvarchar Comentario
+    datetime2 Fecha
   }
   EjecucionEvento {
     bigint EventoId PK
     bigint EjecucionId FK
     datetime2 Fecha
-    int UsuarioId FK
-    varchar Evento "Solicitud, Aprobacion, Rechazo, Ejecucion, Exportacion, EnvioCorreo"
+    int UsuarioId FK "null: programador"
+    varchar Evento "Solicitud, Aprobación, Rechazo, Ejecución, Exportación, Envío por correo"
     nvarchar Detalle
+    int Filas
+    int DuracionMs
     varchar Resultado
     varchar Ip
   }
   Programacion {
     int ProgramacionId PK
+    varchar Codigo "PRG-NNNN calculado"
     int ConsultaId FK
     int ConexionId FK
     varchar Frecuencia "Diaria, Semanal, Mensual"
     time Hora
-    varchar Formato
+    varchar Dias "semanal"
+    tinyint DiaDelMes "0 = último día"
+    varchar Formato "xlsx, csv, pdf, json, txt"
+    nvarchar ParametrosJson "fijos o variables"
+    int ResponsableId FK
     datetime2 ProximaEjecucion
-    varchar Estado "Activa, Pausada, PendienteAprobacion"
+    varchar UltimoResultado
+    varchar Estado "Activa, Pausada"
   }
   ProgramacionDestinatario {
     int ProgramacionId PK,FK
-    varchar EntraObjectId PK "usuario o grupo"
+    varchar Correo PK
+    uniqueidentifier EntraObjectId "usuario o grupo, opcional"
   }

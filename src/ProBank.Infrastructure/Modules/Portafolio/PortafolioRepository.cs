@@ -4,6 +4,7 @@ using Dapper;
 using ProBank.Application.Abstractions;
 using ProBank.Application.Modules.Portafolio;
 using ProBank.Contracts.Portafolio;
+using ProBank.Domain.Modules.Portafolio;
 using ProBank.Infrastructure.Persistence;
 
 namespace ProBank.Infrastructure.Modules.Portafolio;
@@ -55,7 +56,53 @@ internal sealed class PortafolioRepository(ISqlConnectionFactory db) : IPortafol
         return new ItemGuardadoDto(p.Get<Guid>("TokenGuardado"), p.Get<string>("Codigo"));
     }
 
-    public Task EliminarItem(Guid token, Actor a, CancellationToken ct) => Ejecutar("pry.usp_Item_Eliminar", Con(new { Token = token }, a), ct);
+    public async Task<IReadOnlyList<string>> EliminarItem(Guid token, Actor a, CancellationToken ct)
+    {
+        await using var cn = await db.Abrir(ct);
+        return (await cn.QueryAsync<string>(new CommandDefinition("pry.usp_Item_Eliminar", Con(new { Token = token }, a), commandType: Sp.Tipo, cancellationToken: ct))).ToList();
+    }
+
+    public async Task<IReadOnlyList<AdjuntoDto>> ListarAdjuntos(AmbitoAdjunto ambito, Guid duenoToken, CancellationToken ct)
+    {
+        await using var cn = await db.Abrir(ct);
+        return (await cn.QueryAsync<AdjuntoDto>(new CommandDefinition("pry.usp_Adjunto_Listar", new { Ambito = ambito.ToString(), DuenoToken = duenoToken },
+            commandType: Sp.Tipo, cancellationToken: ct))).ToList();
+    }
+
+    public async Task<(AmbitoAdjunto Ambito, string Nombre, string TipoContenido, string Ruta)?> ObtenerAdjunto(Guid token, CancellationToken ct)
+    {
+        await using var cn = await db.Abrir(ct);
+        var f = await cn.QuerySingleOrDefaultAsync<AdjuntoFila>(new CommandDefinition("pry.usp_Adjunto_Obtener", new { Token = token }, commandType: Sp.Tipo, cancellationToken: ct));
+        return f is null ? null : (Enum.Parse<AmbitoAdjunto>(f.Ambito), f.Nombre, f.TipoContenido, f.Ruta);
+    }
+
+    public Task RegistrarAdjunto(AmbitoAdjunto ambito, Guid duenoToken, Guid token, string nombre, string descripcion, string tipoContenido, long tamano, string ruta, Actor a, CancellationToken ct) =>
+        Ejecutar("pry.usp_Adjunto_Registrar", Con(new
+        {
+            Ambito = ambito.ToString(), DuenoToken = duenoToken, Token = token, Nombre = nombre, Descripcion = descripcion, TipoContenido = tipoContenido,
+            Tamano = tamano, Ruta = ruta
+        }, a), ct);
+
+    public Task ActualizarAdjunto(Guid token, string descripcion, Actor a, CancellationToken ct) =>
+        Ejecutar("pry.usp_Adjunto_Actualizar", Con(new { Token = token, Descripcion = descripcion }, a), ct);
+
+    public async Task<IReadOnlyList<ParametroAdjuntoDto>> ParametrosAdjunto(CancellationToken ct)
+    {
+        await using var cn = await db.Abrir(ct);
+        var filas = await cn.QueryAsync<ParametroAdjuntoFila>(new CommandDefinition("pry.usp_ParametroAdjunto_Listar", commandType: Sp.Tipo, cancellationToken: ct));
+        return filas.Select(f => new ParametroAdjuntoDto(f.Ambito, f.Extensiones.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), f.MaximoMB)).ToList();
+    }
+
+    public Task GuardarParametroAdjunto(AmbitoAdjunto ambito, string extensiones, int maximoMB, Actor a, CancellationToken ct) =>
+        Ejecutar("pry.usp_ParametroAdjunto_Guardar", Con(new { Ambito = ambito.ToString(), Extensiones = extensiones, MaximoMB = maximoMB }, a), ct);
+
+    public async Task<string> EliminarAdjunto(Guid token, Actor a, CancellationToken ct)
+    {
+        var p = Con(new { Token = token }, a);
+        p.Add("Ruta", dbType: DbType.AnsiString, size: 300, direction: ParameterDirection.Output);
+        await Ejecutar("pry.usp_Adjunto_Eliminar", p, ct);
+        return p.Get<string>("Ruta");
+    }
 
     public Task GuardarHitos(Guid itemToken, IReadOnlyList<HitoRequest> hitos, Actor a, CancellationToken ct) =>
         Ejecutar("pry.usp_Hito_Guardar", Con(new
@@ -120,7 +167,7 @@ internal sealed class PortafolioRepository(ISqlConnectionFactory db) : IPortafol
     {
         await using var cn = await db.Abrir(ct);
         var f = await cn.QuerySingleOrDefaultAsync<InformeContenidoFila>(new CommandDefinition("pry.usp_Informe_Obtener", new { InformeId = informeId }, commandType: Sp.Tipo, cancellationToken: ct));
-        return f is null ? null : new InformeContenidoDto(f.InformeId, f.Codigo, f.Tipo, D(f.Desde), D(f.Hasta), f.Estado, f.ContenidoHtml);
+        return f is null ? null : new InformeContenidoDto(f.InformeId, f.Codigo, f.Tipo, D(f.Desde), D(f.Hasta), f.Estado, f.TienePdf);
     }
 
     public async Task<InformeDatos> DatosInforme(DateOnly desde, DateOnly hasta, CancellationToken ct)
@@ -134,8 +181,8 @@ internal sealed class PortafolioRepository(ISqlConnectionFactory db) : IPortafol
         return new InformeDatos(resumen, bitacora, acuerdos, temas);
     }
 
-    public Task GenerarInforme(int informeId, string html, Actor a, CancellationToken ct) =>
-        Ejecutar("pry.usp_Informe_Generar", Con(new { InformeId = informeId, ContenidoHtml = html }, a), ct);
+    public Task GenerarInforme(int informeId, string rutaPdf, Actor a, CancellationToken ct) =>
+        Ejecutar("pry.usp_Informe_Generar", Con(new { InformeId = informeId, RutaPdf = rutaPdf }, a), ct);
 
     public async Task<ParametrizacionDto> Parametrizacion(CancellationToken ct)
     {
@@ -164,6 +211,8 @@ internal sealed class PortafolioRepository(ISqlConnectionFactory db) : IPortafol
         string? Temas, string Descripcion, int ResponsableId, string Responsable, DateTime FechaCumplimiento, DateTime? FechaCumplido, string Estado);
     private sealed record InformeFila(int InformeId, string Codigo, string Tipo, DateTime Desde, DateTime Hasta, string Incluye, string Estado,
         DateTime? FechaGenerado, string? GeneradoPor);
-    private sealed record InformeContenidoFila(int InformeId, string Codigo, string Tipo, DateTime Desde, DateTime Hasta, string Incluye, string Estado, string? ContenidoHtml);
+    private sealed record InformeContenidoFila(int InformeId, string Codigo, string Tipo, DateTime Desde, DateTime Hasta, string Incluye, string Estado, bool TienePdf);
     private sealed record AccionFila(string Clave, string Nombre, string Estado, string? Roles);
+    private sealed record AdjuntoFila(string Ambito, string Nombre, string TipoContenido, string Ruta);
+    private sealed record ParametroAdjuntoFila(string Ambito, string Extensiones, int MaximoMB);
 }

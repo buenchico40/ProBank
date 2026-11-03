@@ -67,8 +67,14 @@ try {
     dotnet build src/ProBank.Database/ProBank.Database.sqlproj -c Release -nologo -v q
     $token = az account get-access-token --resource https://database.windows.net/ --query accessToken -o tsv
     $csSinAuth = "Server=tcp:$sqlFqdn,1433;Database=$base;Encrypt=True;Connect Timeout=60"
+    # Always Encrypted (Bóveda): CMK en Key Vault y CEK en la base; solo la primera vez (si ya existen no se tocan).
+    $env:PROBANK_SQL = "Server=tcp:$sqlFqdn,1433;Database=$base;Authentication=Active Directory Default;Encrypt=True;Connect Timeout=60"
+    try {
+        dotnet run --project tools/ProBank.Setup -c Release -- llaves --keyvault $o.cmk_id.value
+        if ($LASTEXITCODE -ne 0) { throw "No se pudieron crear las llaves de Always Encrypted" }
+    } finally { Remove-Item Env:PROBANK_SQL -ErrorAction SilentlyContinue }
     sqlpackage /Action:Publish /SourceFile:src/ProBank.Database/bin/Release/ProBank.Database.dacpac `
-        /TargetConnectionString:$csSinAuth /AccessToken:$token /Quiet:True
+        /TargetConnectionString:$csSinAuth /AccessToken:$token "/p:ExcludeObjectTypes=ColumnMasterKeys;ColumnEncryptionKeys" /Quiet:True
 
     # La API entra con su identidad administrada: usuario contenido y solo EXECUTE sobre los esquemas.
     # Con SID = clientId de la identidad no hace falta que el servidor SQL lea el directorio (Directory Readers).

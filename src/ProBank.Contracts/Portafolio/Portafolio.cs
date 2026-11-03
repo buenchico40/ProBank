@@ -12,6 +12,16 @@ public sealed record HitoDto(int HitoId, string Nombre, int Orden, DateOnly? Fec
 
 public sealed record GuardarItemRequest(string Tipo, string Titulo, string? DescripcionHtml, IReadOnlyList<int> ResponsableIds, string Estado);
 public sealed record ItemGuardadoDto(Guid Token, string Codigo);
+
+/// <summary>Documento adjunto de un ítem o de una tarea; se descarga por su token.</summary>
+public sealed record AdjuntoDto(Guid Token, string Nombre, string Descripcion, string TipoContenido, long Tamano, string SubidoPor, DateTime FechaRegistro);
+public sealed record ActualizarAdjuntoRequest(string Descripcion);
+
+/// <summary>Tipos y tamaño máximo de los adjuntos de un ámbito: "Item" (proyectos, mejoras y bugs) o "Tarea".</summary>
+public sealed record ParametroAdjuntoDto(string Ambito, IReadOnlyList<string> Extensiones, int MaximoMB);
+/// <summary>Parametrización vigente y el catálogo de tipos que se pueden habilitar.</summary>
+public sealed record ParametrosAdjuntoDto(IReadOnlyList<ParametroAdjuntoDto> Ambitos, IReadOnlyList<string> Catalogo, int MaximoMBPermitido);
+public sealed record GuardarParametroAdjuntoRequest(IReadOnlyList<string> Extensiones, int MaximoMB);
 public sealed record GuardarHitosRequest(IReadOnlyList<HitoRequest> Hitos);
 public sealed record HitoRequest(int? HitoId, string Nombre, int Orden, DateOnly? Inicio, DateOnly? Fin);
 
@@ -32,7 +42,8 @@ public sealed record ActualizarAcuerdoRequest(string Descripcion, int Responsabl
 // Informes de seguimiento
 public sealed record InformeDto(int InformeId, string Codigo, string Tipo, DateOnly Desde, DateOnly Hasta, string Incluye, string Estado,
     DateTime? FechaGenerado, string? GeneradoPor);
-public sealed record InformeContenidoDto(int InformeId, string Codigo, string Tipo, DateOnly Desde, DateOnly Hasta, string Estado, string? ContenidoHtml);
+/// <summary>TienePdf: el informe ya se generó y su PDF se descarga de api/portafolio/informes/{id}/pdf.</summary>
+public sealed record InformeContenidoDto(int InformeId, string Codigo, string Tipo, DateOnly Desde, DateOnly Hasta, string Estado, bool TienePdf);
 public sealed record GuardarInformeRequest(string Tipo, DateOnly Desde, DateOnly Hasta);
 public sealed record ResumenInformeDto(string Item, string Titulo, string Tipo, string Estado, int Tareas, int Completadas, int Avance,
     int TareasConMovimiento, int Acuerdos, int Cumplidos, int Vencidos);

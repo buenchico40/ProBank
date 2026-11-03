@@ -14,7 +14,7 @@ BEGIN
            AND NOT EXISTS (SELECT 1 FROM pry.Aprobacion a WHERE a.TareaId = t.TareaId AND a.AprobadorId = @UsuarioId AND a.Ronda = r.Ronda
                            AND NOT EXISTS (SELECT 1 FROM pry.Aprobacion z WHERE z.TareaId = t.TareaId AND z.Ronda = r.Ronda AND z.Decision = 'Rechazada'))) AS AprobacionesPendientes,
         (SELECT COUNT(*) FROM pry.Tarea WHERE TecnicoId = @UsuarioId AND Estado <> 'Completada') AS TareasAsignadas,
-        (SELECT COUNT(*) FROM com.Renovacion WHERE Estado NOT IN ('Renovado', 'Anulado', 'Retirado')
+        (SELECT COUNT(*) FROM com.Renovacion WHERE Estado <> 'Retirado'
          AND Vence >= @Hoy AND Vence <= DATEADD(DAY, DiasAviso, @Hoy)) AS RenovacionesPorVencer;
 
     -- COA-05: cobertura de las coactivas no anuladas
@@ -24,11 +24,14 @@ BEGIN
     SELECT x.Etiqueta, (SELECT COUNT(*) FROM pry.Item i WHERE i.Tipo = x.Etiqueta AND i.Estado NOT IN ('Anulado', 'Cerrado')) AS Valor
     FROM (VALUES (1, 'Proyecto'), (2, 'Mejora'), (3, 'Bug')) AS x (Orden, Etiqueta) ORDER BY x.Orden;
 
-    SELECT PromocionId, Titulo, Hasta FROM mkt.Promocion
-    WHERE Estado = 'Publicado' AND Desde <= @Hoy AND (Hasta IS NULL OR Hasta >= @Hoy) AND Audiencia IN ('Todos', @RolActivo)
-    ORDER BY Orden;
+    -- MKT-01 y MKT-02: lo publicado y vigente hoy para el rol activo (mkt.fn_VisiblePara); carrusel en su orden, destacados primero
+    SELECT Token, Titulo, TextoAlternativo, Enlace, Hasta, CAST(CASE WHEN ImagenRuta IS NULL THEN 0 ELSE 1 END AS BIT) AS TieneImagen
+    FROM mkt.Promocion
+    WHERE Ubicacion = N'Panel principal' AND mkt.fn_EstadoVigente(Estado, Desde, Hasta, @Hoy) = 'Publicado' AND mkt.fn_VisiblePara(Audiencia, @RolActivo) = 1
+    ORDER BY Orden, PromocionId;
 
-    SELECT Codigo, Titulo, Tipo, ContenidoHtml, Desde, Hasta, Audiencia, Destacado FROM mkt.Comunicado
-    WHERE Estado = 'Publicado' AND Desde <= @Hoy AND (Hasta IS NULL OR Hasta >= @Hoy) AND Audiencia IN ('Todos', @RolActivo)
-    ORDER BY Destacado DESC, Desde DESC;
+    SELECT Codigo, Titulo, Tipo, Resumen, ContenidoHtml, Contacto, Desde, Hasta, Audiencia, Destacado
+    FROM mkt.Comunicado
+    WHERE mkt.fn_EstadoVigente(Estado, Desde, Hasta, @Hoy) = 'Publicado' AND mkt.fn_VisiblePara(Audiencia, @RolActivo) = 1
+    ORDER BY Destacado DESC, Desde DESC, ComunicadoId DESC;
 END;

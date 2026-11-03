@@ -30,6 +30,34 @@ public sealed class DatosController(ProBankApi api) : Controller
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> EliminarItem(Guid token, CancellationToken ct) => ApiResult.Json(await api.Delete($"api/portafolio/items/{token}", ct));
 
+    // Documentos adjuntos de un ítem (ambito=Item) o de una tarea (ambito=Tarea)
+    private static string Dueno(string ambito) => ambito == "Tarea" ? "tareas" : "items";
+
+    [HttpGet] public async Task<IActionResult> Adjuntos(string ambito, Guid token, CancellationToken ct) => ApiResult.Json(await api.Get($"api/portafolio/{Dueno(ambito)}/{token}/adjuntos", ct));
+
+    [HttpPost, ValidateAntiForgeryToken, RequestSizeLimit(21_000_000)]
+    public async Task<IActionResult> SubirAdjunto(string ambito, Guid token, IFormFile archivo, [FromForm] string? descripcion, CancellationToken ct) =>
+        ApiResult.Json(await api.PostArchivo($"api/portafolio/{Dueno(ambito)}/{token}/adjuntos", archivo,
+            new Dictionary<string, string?> { ["descripcion"] = descripcion }, ct));
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> ActualizarAdjunto(Guid token, [FromBody] ActualizarAdjuntoRequest r, CancellationToken ct) =>
+        ApiResult.Json(await api.Put($"api/portafolio/adjuntos/{token}", r, ct));
+
+    [HttpGet] public async Task<IActionResult> ParametrosAdjunto(CancellationToken ct) => ApiResult.Json(await api.Get("api/portafolio/adjuntos/parametros", ct));
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> GuardarParametroAdjunto(string ambito, [FromBody] GuardarParametroAdjuntoRequest r, CancellationToken ct) =>
+        ApiResult.Json(await api.Put($"api/portafolio/adjuntos/parametros/{Uri.EscapeDataString(ambito)}", r, ct));
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> EliminarAdjunto(Guid token, CancellationToken ct) => ApiResult.Json(await api.Delete($"api/portafolio/adjuntos/{token}", ct));
+
+    [HttpGet] public Task<IActionResult> Descargar(Guid token, CancellationToken ct) => ArchivoApi.Pasar(this, api, $"api/portafolio/adjuntos/{token}", ct, descargar: true);
+
+    /// <summary>PDF del informe: en línea para verlo en la página o como descarga.</summary>
+    [HttpGet] public Task<IActionResult> InformePdf(int id, bool descargar, CancellationToken ct) => ArchivoApi.Pasar(this, api, $"api/portafolio/informes/{id}/pdf", ct, descargar);
+
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Hitos(Guid token, [FromBody] GuardarHitosRequest r, CancellationToken ct) => ApiResult.Json(await api.Put($"api/portafolio/items/{token}/hitos", r, ct));
 

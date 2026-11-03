@@ -5,7 +5,7 @@
   pb.listo.then(() => {
     const iso = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
     const hoy = new Date(), f = { desde: new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 7), hasta: hoy, modulo: "Todos" };
-    const MODULOS = ["Todos", "Seguridad", "Coactivas", "Portafolio", "Compras y pagos TI", "Cumplimiento", "Credenciales", "Marketing", "Consultas dinámicas", "Versiones", "Reportes"];
+    const MODULOS = ["Todos", "Seguridad", "Coactivas", "Portafolio", "Presupuesto", "Cumplimiento", "Bóveda", "Marketing", "Consultas dinámicas", "Versiones", "Reportes", "Configuración"];
     let lista;
     const recargar = () => lista && lista.recargar();
     lista = pb.ui.grid({

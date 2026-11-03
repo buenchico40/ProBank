@@ -15,7 +15,7 @@ BEGIN
     END
     ELSE
     BEGIN
-        UPDATE pry.Informe SET Tipo = @Tipo, Desde = @Desde, Hasta = @Hasta, Estado = 'Borrador', ContenidoHtml = NULL WHERE InformeId = @InformeId;
+        UPDATE pry.Informe SET Tipo = @Tipo, Desde = @Desde, Hasta = @Hasta, Estado = 'Borrador', ContenidoHtml = NULL, RutaPdf = NULL WHERE InformeId = @InformeId;
         IF @@ROWCOUNT = 0 THROW 50404, N'El informe no existe.', 1;
         SET @Id = @InformeId;
     END;

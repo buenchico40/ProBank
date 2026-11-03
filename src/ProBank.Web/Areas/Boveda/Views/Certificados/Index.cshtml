@@ -1,0 +1,108 @@
+@{ ViewData["Title"] = "Certificados digitales"; ViewData["Opcion"] = "certificados"; }
+@section Scripts {
+<script src="~/js/boveda.js" asp-append-version="true"></script>
+<script>
+  // CRE-01: certificados digitales con su vencimiento y días de aviso (Vigente, Por vencer, Vencido o Inactivo) y el registro de
+  // cada renovación. ProBank solo registra la vigencia: el certificado y su clave privada quedan en el almacén indicado.
+  pb.listo.then(() => {
+    const $c = $("#content"), url = boveda.url;
+    const TIPOS = ["SSL/TLS", "Firma de código", "Cliente", "Firma SAML"], AVISOS = [15, 30, 45, 60, 90, 120];
+    const iso = v => { if (!v) return null; const x = v instanceof Date ? v : pb.aFecha(v); return x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0") + "-" + String(x.getDate()).padStart(2, "0"); };
+    const hoy = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+    const huellaOk = v => !v || /^[0-9A-F]{40}$|^[0-9A-F]{64}$/.test(String(v).replace(/[\s:]/g, "").toUpperCase());
+    let lista = null;
+
+    function listado() {
+      $c.empty();
+      lista = pb.ui.grid({
+        $c, modulo: "Bóveda", titulo: "Certificados digitales", opcion: "certificados", clave: "token",
+        cargar: () => pb.get(url("Certificados")),
+        columnas: [
+          { campo: "codigo", titulo: "Certificado" }, { campo: "nombreComun", titulo: "Nombre común (CN)", ancho: 200 }, { campo: "tipo", titulo: "Tipo" },
+          { campo: "emisor", titulo: "Emisor" }, { campo: "vence", titulo: "Vence", formato: "fecha" },
+          { campo: "diasParaVencer", titulo: "Días para vencer", valor: x => boveda.dias(x.diasParaVencer) }, { campo: "almacen", titulo: "Almacenado en" },
+          { campo: "responsable", titulo: "Responsable" }, { campo: "diasAviso", titulo: "Avisar con (días)" }, { campo: "estado", titulo: "Estado", pill: true }
+        ],
+        anulada: x => !x.activo,
+        botones: [
+          { text: "Nuevo", icon: "add", type: "default", accion: "crear", onClick: () => ficha(null, "nuevo") },
+          { text: "Editar", icon: "edit", accion: "editar", fila: true, onClick: x => ficha(x.token, "edicion") },
+          { text: "Registrar renovación", icon: "refresh", accion: "editar", fila: true, onClick: renovar }
+        ],
+        alAbrir: x => ficha(x.token, "consulta"),
+        detalle: async ($e, x) => {
+          pb.ui.mdHead($e, [x.codigo, x.nombreComun, x.tipo, x.emisor, "Vence " + pb.fecha(x.vence) + " (" + boveda.dias(x.diasParaVencer) + ")"], x.estado);
+          pb.ui.mdGrid($e, "Datos del certificado", [["k", "Dato"], ["v", "Valor"]], [
+            { k: "Huella digital", v: x.huella || "—" }, { k: "Nombres alternativos (SAN)", v: x.nombresAlternativos || "—" }, { k: "Almacenado en", v: x.almacen },
+            { k: "Usado por", v: x.usadoPor || "—" }, { k: "Aviso", v: x.diasAviso + " días antes del vencimiento" }]);
+          const r = await pb.get(url("Renovaciones", "token=" + x.token));
+          if (r) pb.ui.mdGrid($e, "Renovaciones", [["f", "Registrada"], ["a", "Vencía"], ["n", "Vence"], ["h", "Huella nueva"], ["u", "Registrado por"]],
+            r.map(y => ({ f: pb.fechaHora(y.fecha), a: pb.fecha(y.venceAnterior), n: pb.fecha(y.venceNuevo), h: y.huellaNueva, u: y.registradoPor })), "Aún no se ha registrado ninguna renovación.");
+          pb.ui.mdNote($e, "ProBank solo registra la vigencia: el certificado y su clave privada permanecen en el almacén indicado.");
+          if (pb.can("certificados", "editar") && x.activo) pb.ui.mdActions($e, [{ text: "Registrar renovación", icon: "refresh", type: "default", onClick: () => renovar(x) }]);
+        }
+      });
+    }
+
+    function renovar(x) {
+      if (!x.activo) return pb.notify("El certificado está inactivo: actívelo antes de registrar su renovación", "warning");
+      const base = pb.aFecha(x.vence) > hoy() ? pb.aFecha(x.vence) : hoy();
+      const data = { vence: new Date(base.getFullYear() + 1, base.getMonth(), base.getDate()), huella: "" };
+      pb.ui.openPopup("Registrar renovación · " + x.nombreComun, $f => $("<div>").appendTo($f).dxForm({ formData: data, labelLocation: "top", showColonAfterLabel: false, items: [
+        { template: () => $('<p class="muted" style="margin:0">').text("El nuevo certificado se importa en " + x.almacen + "; aquí solo se registra su vigencia. ProBank no almacena certificados ni claves privadas.") },
+        { dataField: "vence", label: { text: "Nueva fecha de vencimiento" }, editorType: "dxDateBox", isRequired: true, editorOptions: { displayFormat: "dd/MM/yyyy", type: "date", min: new Date(hoy().getTime() + 86400000) } },
+        { dataField: "huella", label: { text: "Huella digital (thumbprint) del nuevo certificado" }, isRequired: true, editorOptions: { maxLength: 100 },
+          validationRules: [{ type: "custom", message: "SHA-1 (40) o SHA-256 (64) en hexadecimal", validationCallback: o => huellaOk(o.value) }] }
+      ] }).dxForm("instance"), async f => {
+        if (!f.validate().isValid) return false;
+        const r = await pb.post(url("RenovarCertificado", "token=" + x.token), { vence: iso(data.vence), huella: data.huella });
+        if (r === undefined) return false;
+        pb.notify(x.codigo + ": " + r); lista.recargar();
+      }, "Registrar", 520, { icono: "refresh" });
+    }
+
+    async function ficha(token, modo) {
+      const d = token ? await pb.get(url("Certificado", "token=" + token)) : null;
+      if (token && !d) return;
+      const datos = d ? { codigo: d.codigo, nombreComun: d.nombreComun, tipo: d.tipo, emisor: d.emisor, vence: pb.aFecha(d.vence), almacen: d.almacen,
+                          responsable: d.responsable, diasAviso: d.diasAviso, huella: d.huella || "", nombresAlternativos: d.nombresAlternativos || "",
+                          usadoPor: d.usadoPor || "", activo: d.activo, estado: d.estado, dias: boveda.dias(d.diasParaVencer) }
+                      : { codigo: "(se asigna al guardar)", nombreComun: "", tipo: "SSL/TLS", emisor: "", vence: null, almacen: "", responsable: "", diasAviso: 60,
+                          huella: "", nombresAlternativos: "", usadoPor: "", activo: true, estado: "—", dias: "—" };
+      pb.ui.detalle({
+        $c, modulo: "Bóveda", titulo: "Certificados digitales", modo, nombre: d && d.codigo + " · " + d.nombreComun, token: d && d.token, datos,
+        soloLectura: modo === "consulta" && !pb.can("certificados", "editar"),
+        items: ro => [
+          { dataField: "codigo", label: { text: "Certificado (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "nombreComun", label: { text: "Nombre común (CN)" }, isRequired: !ro, editorOptions: { maxLength: 200 } },
+          { dataField: "tipo", label: { text: "Tipo" }, editorType: "dxSelectBox", isRequired: !ro, editorOptions: { items: TIPOS } },
+          { dataField: "emisor", label: { text: "Emisor" }, isRequired: !ro, editorOptions: { maxLength: 150 } },
+          { dataField: "vence", label: { text: "Vence" }, editorType: "dxDateBox", isRequired: !ro, editorOptions: { displayFormat: "dd/MM/yyyy" } },
+          { dataField: "diasAviso", label: { text: "Avisar con (días)" }, editorType: "dxSelectBox", isRequired: !ro, editorOptions: { items: AVISOS } },
+          { dataField: "almacen", label: { text: "Almacenado en" }, isRequired: !ro, editorOptions: { maxLength: 150, placeholder: "Por ejemplo: Azure Key Vault · kv-probank-prd" } },
+          { dataField: "responsable", label: { text: "Responsable" }, isRequired: !ro, editorOptions: { maxLength: 100, placeholder: "Área o equipo" } },
+          { dataField: "activo", label: { text: "Activo" }, editorType: "dxSwitch", editorOptions: { switchedOnText: "Sí", switchedOffText: "No" } },
+          { dataField: "huella", label: { text: "Huella digital (thumbprint)" }, editorOptions: { maxLength: 100 },
+            validationRules: [{ type: "custom", message: "SHA-1 (40) o SHA-256 (64) en hexadecimal", validationCallback: o => huellaOk(o.value) }] },
+          { dataField: "nombresAlternativos", label: { text: "Nombres alternativos (SAN)" }, editorOptions: { maxLength: 500 } },
+          { dataField: "usadoPor", label: { text: "Usado por" }, editorOptions: { maxLength: 200, placeholder: "Por ejemplo: ProBank Web · Application Gateway" } },
+          { dataField: "estado", label: { text: "Estado (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "dias", label: { text: "Días para vencer (calculado)" }, editorOptions: { readOnly: true } }
+        ],
+        extra: $x => { if (!d) pb.ui.mdNote($x, "ProBank solo registra la vigencia: el certificado y su clave privada permanecen en el almacén indicado."); },
+        alGuardar: async f => {
+          const r = await pb.post(url("GuardarCertificado", d ? "token=" + d.token : ""), { nombreComun: f.nombreComun, tipo: f.tipo, emisor: f.emisor, vence: iso(f.vence),
+            almacen: f.almacen, responsable: f.responsable, diasAviso: f.diasAviso, huella: f.huella || null, nombresAlternativos: f.nombresAlternativos || null,
+            usadoPor: f.usadoPor || null, activo: !!f.activo });
+          if (r === undefined) return;
+          pb.notify("Certificado guardado correctamente"); listado();
+        },
+        alEditar: () => ficha(token, "edicion"),
+        alVolver: listado
+      });
+    }
+
+    listado();
+  });
+</script>
+}

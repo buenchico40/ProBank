@@ -1,0 +1,180 @@
+@{ ViewData["Title"] = "Presupuesto por área"; ViewData["Opcion"] = "presupuesto"; }
+@section Scripts {
+<script src="~/js/presupuesto.js" asp-append-version="true"></script>
+<script>
+  // COM-01 y COM-04: partidas por área y año con su ejecución (asignado + ajustes − comprometido − pagado = disponible).
+  // El borrador del año siguiente se prepara copiando el vigente y se aprueba partida por partida.
+  pb.listo.then(() => {
+    const $c = $("#content"), url = pres.url;
+    // areas: activas, configuradas en Presupuesto › Áreas del presupuesto (se cargan una vez); area: código elegido
+    let lista = null, todas = [], anio = null, areas = null, area = null;
+    const $$ = pb.dinero, signo = v => (v < 0 ? "-" : "") + $$(Math.abs(v));
+
+    function listado() {
+      $c.empty();
+      let $res = null;
+      lista = pb.ui.grid({
+        $c, modulo: "Presupuesto", titulo: "Presupuesto por área", opcion: "presupuesto", clave: "token",
+        antes: $x => { $res = $('<div class="card pad stack">').appendTo($x); },
+        cargar: async () => {
+          if (!areas) { areas = await pres.areas(); area = area || (areas[0] && areas[0].codigo); }
+          if (!area) { sinAreas($res); return []; }
+          const r = await pb.get(url("Partidas", "area=" + encodeURIComponent(area)));
+          if (r === undefined) return r;
+          todas = r;
+          const anios = [...new Set(todas.map(p => p.anio))].sort((a, b) => b - a);
+          if (!anio || anios.indexOf(anio) < 0) anio = Math.max(...todas.filter(p => p.estado === "Activo").map(p => p.anio), 0) || anios[0] || new Date().getFullYear();
+          const filas = todas.filter(p => p.anio === anio);
+          resumen($res, filas, anios);
+          return filas;
+        },
+        columnas: [
+          { campo: "codigo", titulo: "Partida" }, { campo: "anio", titulo: "Año" }, { campo: "area", titulo: "Área" }, { campo: "rubro", titulo: "Rubro" },
+          { campo: "asignado", titulo: "Asignado", formato: "dinero" }, { campo: "ajustes", titulo: "Ajustes", valor: p => p.ajustes ? signo(p.ajustes) : "—" },
+          { campo: "comprometido", titulo: "Comprometido", formato: "dinero" }, { campo: "pagado", titulo: "Pagado", formato: "dinero" },
+          { campo: "disponible", titulo: "Disponible", valor: p => signo(p.disponible) }, { campo: "ejecucion", titulo: "Ejecución", valor: p => p.ejecucion + " %" },
+          { campo: "estado", titulo: "Estado", pill: true }
+        ],
+        anulada: p => p.estado === "Cerrado",
+        botones: [
+          { text: "Nuevo", icon: "add", type: "default", accion: "crear", onClick: () => ficha(null, "nuevo") },
+          { text: "Editar", icon: "edit", accion: "editar", fila: true, onClick: p => ficha(p, "edicion") },
+          { text: "Eliminar", icon: "trash", accion: "eliminar", fila: true, onClick: eliminar },
+          { text: "Aprobar", icon: "check", accion: "aprobar", fila: true, onClick: p => estado(p, "Aprobar") },
+          { text: "Preparar año siguiente", icon: "copy", accion: "crear", onClick: preparar },
+          { text: "Registrar movimiento", icon: "refresh", onClick: p => pb.can("movimientos", "crear") ? pres.movimientoPopup(null, lista.seleccion() && lista.seleccion().token, () => lista.recargar())
+            : pb.notify("Su rol no puede registrar movimientos", "warning") },
+          { text: "Reporte PDF", icon: "textdocument", accion: "exportar", onClick: reporte }
+        ],
+        alAbrir: p => ficha(p, "consulta"),
+        detalle: async ($e, p) => {
+          pb.ui.mdHead($e, [p.codigo, p.rubro, "Área " + p.area, "Año " + p.anio, "Asignado " + $$(p.asignado), "Disponible " + signo(p.disponible)], p.estado);
+          $("<div>").appendTo($e).dxProgressBar({ min: 0, max: 100, value: Math.min(100, p.ejecucion), showStatus: true, statusFormat: () => "Ejecución " + p.ejecucion + " %",
+            elementAttr: { "aria-label": "Ejecución de " + p.codigo } });
+          const d = await pb.get(url("Partida", "token=" + p.token));
+          if (!d) return;
+          pb.ui.mdGrid($e, "Ajustes y movimientos", [["m", "Movimiento"], ["f", "Fecha"], ["t", "Tipo"], ["e", "Efecto", "right"], ["s", "Estado"]],
+            d.movimientos.map(m => ({ m: m.codigo, f: pb.fecha(m.fecha), t: m.tipo + (m.efecto < 0 ? " (sale)" : " (entra)"), e: (m.efecto < 0 ? "-" : "+") + $$(Math.abs(m.efecto)), s: m.estado })), "Sin movimientos.");
+          pb.ui.mdGrid($e, "Pagos aplicados", [["p", "Pago"], ["sc", "Solicitud"], ["f", "Fecha"], ["m", "Monto aplicado", "right"], ["s", "Estado"]],
+            d.pagos.map(x => ({ p: x.pago, sc: x.solicitud, f: pb.fecha(x.fecha), m: $$(x.monto), s: x.estado })), "Sin pagos aplicados.");
+          pb.ui.mdGrid($e, "Compromisos (solicitudes aprobadas)", [["sc", "Solicitud"], ["d", "Descripción"], ["m", "Monto", "right"], ["pg", "Pagado", "right"], ["pp", "Por pagar", "right"]],
+            d.compromisos.map(x => ({ sc: x.codigo, d: x.descripcion, m: $$(x.monto), pg: $$(x.pagado), pp: $$(x.porPagar) })), "Sin compromisos.");
+          const acc = [];
+          if (p.estado === "Borrador" && pb.can("presupuesto", "aprobar")) acc.push({ text: "Aprobar partida", icon: "check", type: "default", onClick: () => estado(p, "Aprobar") });
+          if (p.estado === "Activo" && pb.can("movimientos", "crear")) acc.push({ text: "Registrar ajuste o movimiento", icon: "refresh", type: "default", onClick: () => pres.movimientoPopup(null, p.token, () => lista.recargar()) });
+          if (p.estado === "Activo" && pb.can("presupuesto", "aprobar")) acc.push({ text: "Cerrar partida", icon: "lock", onClick: () => estado(p, "Cerrar") });
+          if (acc.length) pb.ui.mdActions($e, acc);
+        }
+      });
+    }
+
+    // Resumen del año (budgetSummary del prototipo): ejecución del año o, si todo está en borrador, la planificación frente al año anterior
+    function resumen($r, filas, anios) {
+      $r.empty();
+      const $top = $('<div class="sw-row">').appendTo($r);
+      const sum = k => filas.reduce((a, p) => a + p[k], 0);
+      const borrador = filas.length && filas.every(p => p.estado === "Borrador");
+      const $t = $("<div>").appendTo($top);
+      const $f = $('<div style="display:flex;gap:8px">').appendTo($top);
+      // Por ahora solo el área TI lleva presupuesto: el selector queda listo para las demás áreas
+      $("<div>").appendTo($f).dxSelectBox({ items: areas, valueExpr: "codigo", displayExpr: "nombre", value: area, width: 260, disabled: areas.length < 2,
+        inputAttr: { "aria-label": "Área del presupuesto" }, onValueChanged: e => { area = e.value; anio = null; lista.recargar(); } });
+      $("<div>").appendTo($f).dxSelectBox({ items: anios.length ? anios : [anio], value: anio, width: 120, inputAttr: { "aria-label": "Año del presupuesto" },
+        onValueChanged: e => { anio = e.value; lista.recargar(); } });
+      const $k = $('<div class="kpis kpis5">').appendTo($r);
+      const kpi = (t, v) => $k.append($('<div class="card kpi">').append($("<span>").text(t)).append($('<strong class="kpim">').text(v)));
+      if (!filas.length) { $t.append($("<h2>").text("Presupuesto " + area + " " + anio)).append($('<p class="muted">').text("Aún no hay partidas: créelas con «Nuevo» o use «Preparar año siguiente».")); return; }
+      if (borrador) {
+        const prev = todas.filter(p => p.anio === anio - 1), pv = prev.reduce((a, p) => a + p.asignado, 0), nv = sum("asignado");
+        $t.append($("<h2>").text("Presupuesto " + area + " " + anio + " · borrador")).append($('<p class="muted">').text("Planificación: las partidas en borrador no reciben compromisos ni pagos hasta aprobarse. Total planificado " + $$(nv) + " en " + filas.length + " partidas."));
+        kpi("Planificado " + anio, $$(nv)); kpi("Asignado " + (anio - 1), $$(pv)); kpi("Variación", pv ? (nv - pv >= 0 ? "+" : "") + Math.round((nv - pv) / pv * 100) + " %" : "—"); kpi("Partidas en borrador", String(filas.length));
+        return;
+      }
+      $t.append($("<h2>").text("Ejecución presupuestaria " + area + " " + anio)).append($('<p class="muted">').text("Los pagos reducen el presupuesto de cada partida; las solicitudes aprobadas quedan como comprometido."));
+      const asig = sum("asignado"), aj = sum("ajustes"), comp = sum("comprometido"), pag = sum("pagado"), disp = sum("disponible"), tot = asig + aj;
+      kpi("Asignado", $$(asig)); kpi("Ajustes", signo(aj)); kpi("Comprometido", $$(comp)); kpi("Pagado", $$(pag)); kpi("Disponible", signo(disp));
+      const pct = tot ? Math.round((pag + comp) / tot * 100) : 0;
+      $("<div>").appendTo($r).dxProgressBar({ min: 0, max: 100, value: Math.min(100, pct), showStatus: true, statusFormat: () => "Ejecución del año " + pct + " %", elementAttr: { "aria-label": "Ejecución del año" } });
+    }
+
+    // Reporte del área y el año elegidos (DevExpress Reporting): servicios y pagos frente a lo presupuestado
+    function reporte() {
+      if (!area) return pb.notify("Configure al menos un área para generar el reporte", "warning");
+      const pdf = q => url("Reporte", "area=" + encodeURIComponent(area) + "&anio=" + anio + q);
+      pb.ui.openPopup("Reporte de presupuesto " + area + " " + anio, $f => {
+        $("<iframe>").attr({ src: pdf(""), title: "Reporte de presupuesto " + area + " " + anio })
+          .css({ width: "100%", height: "min(72vh, 760px)", border: "1px solid var(--line)", borderRadius: "8px", background: "#fff" }).appendTo($f);
+        return null;
+      }, () => true, "Cerrar", 1100, { extra: [
+        { text: "Descargar PDF", icon: "download", onClick: () => { window.location.href = pdf("&descargar=true"); } },
+        { text: "Abrir en otra pestaña", icon: "export", onClick: () => window.open(pdf(""), "_blank") }
+      ] });
+    }
+
+    function sinAreas($r) {
+      $r.empty().append($("<h2>").text("Sin áreas activas"))
+        .append($('<p class="muted">').text("Configure al menos un área en Presupuesto › Áreas del presupuesto para registrar partidas."));
+    }
+
+    async function estado(p, accion) {
+      if (accion === "Aprobar" && p.estado !== "Borrador") return pb.notify("Solo se aprueban partidas en borrador", "warning");
+      if (accion === "Cerrar" && !await pb.ui.confirmar("Cerrar partida", "¿Desea cerrar <b>" + pb.esc(p.codigo) + "</b>? Ya no recibirá compromisos, movimientos ni pagos.", "Cerrar", "danger", "lock")) return;
+      const r = await pb.post(url("EstadoPartida", "token=" + p.token + "&accion=" + accion));
+      if (r !== undefined) { pb.notify(p.codigo + " · " + r); lista.recargar(); }
+    }
+
+    async function eliminar(p) {
+      if (p.estado !== "Borrador") return pb.notify("Solo se eliminan partidas en borrador", "warning");
+      if (!await pb.ui.confirmar("Eliminar partida", "¿Desea eliminar <b>" + pb.esc(p.codigo) + "</b>? Esta acción no se puede deshacer.", "Eliminar", "danger", "trash")) return;
+      if (await pb.post(url("EliminarPartida", "token=" + p.token)) !== undefined) { pb.notify("Partida " + p.codigo + " eliminada"); lista.recargar(); }
+    }
+
+    async function preparar() {
+      const r = await pb.post(url("Preparar", "area=" + encodeURIComponent(area)));
+      if (r === undefined) return;
+      anio = r.anio;
+      pb.notify(r.copiadas ? r.copiadas + " partida(s) copiadas al borrador " + area + " " + r.anio + " con el asignado del año vigente; ajuste los montos y apruébelas"
+                           : "El borrador " + r.anio + " ya tiene todos los rubros del año vigente", r.copiadas ? "success" : "info");
+      lista.recargar();
+    }
+
+    function ficha(p, modo) {
+      if (modo === "edicion" && p.estado !== "Borrador") return pb.notify("Una partida " + p.estado.toLowerCase() + " no cambia su asignado: registre un ajuste o movimiento", "warning");
+      const datos = p ? { codigo: p.codigo, area: p.area, anio: p.anio, rubro: p.rubro, asignado: p.asignado, ajustes: signo(p.ajustes), comprometido: $$(p.comprometido), pagado: $$(p.pagado),
+                          disponible: signo(p.disponible), ejecucion: p.ejecucion + " %", estado: p.estado, aprobado: p.aprobadoPor ? p.aprobadoPor + " · " + pb.fechaHora(p.fechaAprobacion) : "—" }
+                      : { codigo: "(se asigna al guardar)", area, anio: anio || new Date().getFullYear(), rubro: "", asignado: null, ajustes: "—", comprometido: "—", pagado: "—", disponible: "—",
+                          ejecucion: "—", estado: "Borrador", aprobado: "—" };
+      pb.ui.detalle({
+        $c, modulo: "Presupuesto", titulo: "Presupuesto por área", modo, nombre: p && p.codigo, token: p && p.token, datos,
+        soloLectura: modo === "consulta" && (!pb.can("presupuesto", "editar") || p.estado !== "Borrador"),
+        items: ro => [
+          { dataField: "codigo", label: { text: "Partida (calculado)" }, editorOptions: { readOnly: true } },
+          // El área no cambia: solo se elige (entre las activas) al crear la partida
+          p ? { dataField: "area", label: { text: "Área" }, editorOptions: { readOnly: true } }
+            : { dataField: "area", label: { text: "Área" }, editorType: "dxSelectBox", isRequired: !ro,
+                editorOptions: { items: areas || [], valueExpr: "codigo", displayExpr: a => a && a.codigo + " · " + a.nombre, readOnly: ro } },
+          { dataField: "anio", label: { text: "Año" }, editorType: "dxNumberBox", isRequired: !ro, editorOptions: { min: 2000, max: 2100, showSpinButtons: true, format: "#0", readOnly: ro || !!p } },
+          { dataField: "rubro", label: { text: "Rubro" }, isRequired: !ro, editorOptions: { maxLength: 150 } },
+          { dataField: "asignado", label: { text: "Asignado" }, editorType: "dxNumberBox", isRequired: !ro, editorOptions: { format: "$ #,##0.00", min: 0 } },
+          { dataField: "ajustes", label: { text: "Ajustes (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "comprometido", label: { text: "Comprometido (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "pagado", label: { text: "Pagado (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "disponible", label: { text: "Disponible (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "ejecucion", label: { text: "Ejecución (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "estado", label: { text: "Estado (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "aprobado", label: { text: "Aprobado por (calculado)" }, editorOptions: { readOnly: true } }
+        ],
+        alGuardar: async f => {
+          const g = await pb.post(url("GuardarPartida", p ? "token=" + p.token : ""), { anio: f.anio, area: f.area, rubro: f.rubro, asignado: f.asignado });
+          if (g === undefined) return;
+          area = f.area; anio = f.anio; pb.notify("Registro guardado correctamente" + (p ? "" : ": la partida queda en borrador hasta aprobarse")); listado();
+        },
+        alEditar: () => ficha(p, "edicion"),
+        alVolver: listado
+      });
+    }
+
+    listado();
+  });
+</script>
+}

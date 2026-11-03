@@ -21,5 +21,5 @@ correos y aplicaciones aisladas, con seguridad centralizada en Microsoft Entra I
 
 ## Alcance de esta versión
 
-Seguridad, Coactivas, Portafolio, Compras y pagos TI, Cumplimiento y auditoría, Certificados y secretos,
+Seguridad, Coactivas, Portafolio, Presupuesto, Cumplimiento y auditoría, Bóveda,
 Marketing, Consultas dinámicas, Versiones de aplicaciones y componentes, y Reportes.

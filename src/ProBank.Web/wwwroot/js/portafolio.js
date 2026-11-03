@@ -20,7 +20,7 @@
     if (!abiertos.length) return pb.notify("No hay proyectos, mejoras o bugs abiertos para agregar tareas", "warning");
     const data = { item: abiertos.some(i => i.token === itemToken) ? itemToken : null, hitoId: null, titulo: "", area: null, tecnicoId: null, orden: 1,
                    inicio: hoy(), fecha: null, aprob: [] };
-    let form, editor, hitos = [];
+    let form, editor, docs, hitos = [];
     const cargarItem = async () => {
       if (!data.item) return;
       const [d, ts] = await Promise.all([pb.get(url("Item", "token=" + data.item)), pb.get(url("Tareas", "item=" + data.item))]);
@@ -47,16 +47,21 @@
       ] }).dxForm("instance");
       $f.append('<span class="lbl" style="display:block;margin-top:8px">Descripción</span>');
       editor = $("<div>").appendTo($f).dxHtmlEditor({ height: 120, toolbar: { items: ["bold", "italic", "underline", "separator", "bulletList", "orderedList", "separator", "link"] } }).dxHtmlEditor("instance");
+      // Documentos de la tarea (opcionales): se suben en cuanto la tarea se crea
+      $f.append('<span class="lbl" style="display:block;margin-top:12px">Documentos adjuntos (opcional)</span>');
+      docs = adjuntos($("<div>").appendTo($f), { ambito: "Tarea", token: null, editable: true });
       if (data.item) setTimeout(cargarItem, 0);
       return form;
     }, async f => {
-      if (!f.validate().isValid) return false;
+      if (!f.validate().isValid || !docs.validar()) return false;
       const r = await pb.post(url("CrearTarea"), { itemToken: data.item, hitoId: data.hitoId, titulo: data.titulo, area: data.area, tecnicoId: data.tecnicoId, orden: data.orden,
         fechaInicio: iso(data.inicio), fechaTerminacion: iso(data.fecha), aprobadorIds: data.aprob, descripcionHtml: editor.option("value") || null });
       if (r === undefined) return false;
       const tec = users.find(u => u.usuarioId === data.tecnicoId), it = abiertos.find(i => i.token === data.item);
       const nom = id => (users.find(u => u.usuarioId === id) || {}).nombre;
-      pb.notify("Tarea " + r + " creada en " + it.codigo + " y asignada a " + tec.nombre + (data.aprob.length > 1 ? " · requiere la aprobación de sus " + data.aprob.length + " aprobadores" : data.aprob.length ? " · la aprueba " + nom(data.aprob[0]) : " · sin aprobadores"));
+      pb.notify("Tarea " + r.codigo + " creada en " + it.codigo + " y asignada a " + tec.nombre + (data.aprob.length > 1 ? " · requiere la aprobación de sus " + data.aprob.length + " aprobadores" : data.aprob.length ? " · la aprueba " + nom(data.aprob[0]) : " · sin aprobadores"));
+      // La tarea ya existe: si algún documento falla, se avisa y se puede adjuntar después desde la tarea
+      if (!await docs.subir(r.token)) pb.notify("La tarea " + r.codigo + " se creó, pero algún documento no se adjuntó: adjúntelo desde la tarea", "warning");
       if (listo) listo();
     }, "Crear tarea", 680);
   }
@@ -118,13 +123,23 @@
       d.aprobadores.map(a => ({ a: a.nombre, u: a.usuario, d: a.decision || "Pendiente", f: a.fecha ? pb.fechaHora(a.fecha) : "—", c: a.comentario || "—" })));
     pb.ui.mdGrid($e, "Historial", [["f", "Fecha"], ["e", "Evento"], ["d", "Detalle"], ["u", "Usuario"]],
       d.historial.map(h => ({ f: pb.fechaHora(h.fecha), e: h.evento, d: h.detalle || "—", u: h.usuario })), "Sin eventos.");
-    // El técnico asignado envía y completa su tarea; los demás necesitan poder editar tareas (lo valida la API)
+    // El técnico asignado envía y completa su tarea y maneja sus documentos; los demás necesitan poder editar tareas (lo valida la API)
     const puede = t.tecnicoId === pb.perfil.usuarioId || pb.can("tareas", "editar");
+    $e.append($('<div class="mdtitle">').text("Documentos adjuntos"));
+    adjuntos($("<div>").appendTo($e), { ambito: "Tarea", token: t.token, editable: puede, inmediato: true });
     if (!listo || !puede) return;
+    // Sin aprobadores, «enviar» no pide aprobación: la tarea pasa directo a En curso
+    const sinAprob = !t.aprobadores.length;
     pb.ui.mdActions($e, [
-      { text: "Enviar a aprobar", icon: "send", type: "default", disabled: t.estado === "EnRevision" || t.estado === "Completada", onClick: () => accion(t, "enviar", listo) },
+      { text: sinAprob ? "Iniciar tarea" : "Enviar a aprobar", icon: sinAprob ? "video" : "send", type: "default", disabled: t.estado !== "Pendiente", onClick: () => accion(t, "enviar", listo) },
       { text: "Marcar completada", icon: "check", disabled: t.estado !== "EnCurso", onClick: () => accion(t, "completar", listo) }
     ]);
+    const motivo = {
+      Pendiente: sinAprob ? "Para completarla, pulse primero «Iniciar tarea»: no tiene aprobadores, así que pasa directo a En curso. Cambiar el avance a 100 % no la completa."
+                          : "Para completarla, primero envíela a aprobar; cuando la aprueben todos sus aprobadores pasa a En curso.",
+      EnRevision: "Está en revisión: se podrá completar cuando la aprueben todos sus aprobadores (Portafolio › Aprobaciones)."
+    }[t.estado];
+    if (motivo) pb.ui.mdNote($e, motivo);
   }
 
   async function accion(t, a, listo, cuerpo) {
@@ -141,5 +156,137 @@
     listo();
   }
 
-  window.pry = { url, AREAS, ESTADO, iso, fechaLocal, hoy, usuarios, titulo, tareaPopup, acuerdoPopup, detalleTarea, accion };
+  // Por qué un ítem no admite tareas ni acuerdos (null = sí los admite)
+  function motivoSinTareas(estado) {
+    if (estado === "Borrador") return "Este ítem está en Borrador: para agregar tareas o acuerdos, edítelo y cambie su estado a Pendiente o En curso.";
+    if (estado === "Completado" || estado === "Anulado") return "Este ítem está " + estado + ": ya no admite tareas ni acuerdos nuevos.";
+    if (!pb.can("tareas", "crear")) return "Su rol activo (" + pb.sesion.rolActivo + ") no tiene permiso para crear tareas (Seguridad › Roles y permisos).";
+    return null;
+  }
+
+  // ---------- Documentos adjuntos de un ítem o de una tarea (tipos y tamaño según Portafolio › Parametrización) ----------
+  const tamano = n => n >= 1048576 ? (n / 1048576).toFixed(1).replace(".", ",") + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
+  let parametrosCache = null;
+  const parametrosAdjunto = async () => parametrosCache || (parametrosCache = await pb.get(url("ParametrosAdjunto")));
+
+  // o: { ambito: "Item" | "Tarea", token (null = ítem nuevo), editable, inmediato }. Sin «inmediato», los archivos
+  // elegidos se suben al guardar el formulario con subir(token); con «inmediato», con su propio botón «Adjuntar».
+  // Cada documento lleva su descripción (obligatoria): validar() la revisa antes de guardar.
+  function adjuntos($el, o) {
+    let pendientes = [], uploader = null, token = o.token, $pend = null;   // pendientes: [{ f: File, d: descripción }]
+    const $lista = $("<div>").appendTo($el);
+    const editable = () => o.editable && (o.ambito === "Tarea" || pb.can("proyectos", "editar"));
+    async function cargar() {
+      if (!token) return;
+      const docs = await pb.get(url("Adjuntos", "ambito=" + o.ambito + "&token=" + token));
+      if (!docs) return;
+      $lista.empty();
+      if (!docs.length) { $lista.append($('<p class="muted" style="margin:0">').text("Sin documentos adjuntos.")); return; }
+      $("<div>").appendTo($lista).dxDataGrid({
+        dataSource: docs, keyExpr: "token", showBorders: true, showRowLines: true, wordWrapEnabled: true, paging: { enabled: false },
+        columns: [
+          { dataField: "nombre", caption: "Documento", cellTemplate: ($c, i) => $('<a class="lnk">').attr("href", url("Descargar", "token=" + i.data.token)).text(i.value).appendTo($c) },
+          { dataField: "descripcion", caption: "Descripción", minWidth: 200 },
+          { dataField: "tamano", caption: "Tamaño", width: 100, alignment: "right", calculateCellValue: d => tamano(d.tamano) },
+          { dataField: "subidoPor", caption: "Subido por" },
+          { dataField: "fechaRegistro", caption: "Fecha", width: 150, calculateCellValue: d => pb.fechaHora(d.fechaRegistro) }
+        ].concat(editable() ? [{ type: "buttons", width: 84, buttons: [
+          { hint: "Editar descripción", icon: "edit", onClick: e => describir(e.row.data) },
+          { hint: "Quitar documento", icon: "trash", onClick: e => quitar(e.row.data) }] }] : [])
+      });
+    }
+    function describir(d) {
+      const data = { descripcion: d.descripcion };
+      pb.ui.openPopup("Descripción · " + d.nombre, $f => $("<div>").appendTo($f).dxForm({ formData: data, labelLocation: "top", showColonAfterLabel: false, items: [
+        { dataField: "descripcion", label: { text: "Descripción del documento" }, editorType: "dxTextArea", isRequired: true, editorOptions: { height: 90, maxLength: 300 } }
+      ] }).dxForm("instance"), async f => {
+        if (!f.validate().isValid) return false;
+        if (await pb.post(url("ActualizarAdjunto", "token=" + d.token), { descripcion: data.descripcion }) === undefined) return false;
+        pb.notify("Descripción de " + d.nombre + " actualizada"); cargar();
+      }, "Guardar", 480);
+    }
+    // Lista de documentos elegidos, cada uno con su descripción
+    function pintarPendientes() {
+      $pend.empty();
+      pendientes.forEach(x => {
+        const $r = $('<div class="stack" style="gap:4px;margin:6px 0">').appendTo($pend);
+        $r.append($("<b>").text(x.f.name + " (" + tamano(x.f.size) + ")"));
+        $("<div>").appendTo($r).dxTextBox({ value: x.d, maxLength: 300, placeholder: "Descripción del documento (obligatoria)",
+          inputAttr: { "aria-label": "Descripción de " + x.f.name }, valueChangeEvent: "input", onValueChanged: e => { x.d = e.value || ""; } });
+      });
+    }
+    function validar() {
+      const sin = pendientes.filter(x => !String(x.d || "").trim());
+      if (sin.length) pb.notify("Escriba la descripción de: " + sin.map(x => x.f.name).join(", "), "warning");
+      return !sin.length;
+    }
+    async function quitar(d) {
+      if (!await pb.ui.confirmar("Quitar documento", "¿Desea quitar el documento <b>" + pb.esc(d.nombre) + "</b>? Esta acción no se puede deshacer.", "Quitar", "danger", "trash")) return;
+      if (await pb.post(url("EliminarAdjunto", "token=" + d.token)) !== undefined) { pb.notify("Documento " + d.nombre + " quitado"); cargar(); }
+    }
+    // Sube los documentos elegidos; devuelve false si alguno falló (el aviso ya se mostró)
+    async function subir(t) {
+      token = t;
+      if (!validar()) return false;
+      let ok = true;
+      for (const { f, d } of pendientes) {
+        const fd = new FormData(); fd.append("archivo", f, f.name); fd.append("descripcion", d.trim());
+        const r = await fetch(url("SubirAdjunto", "ambito=" + o.ambito + "&token=" + t), { method: "POST", headers: { RequestVerificationToken: pb.token() }, body: fd }).then(pb._leer);
+        if (r === undefined) ok = false;
+      }
+      if (pendientes.length && ok) pb.notify(pendientes.length + " documento(s) adjuntado(s)");
+      pendientes = []; if (uploader) uploader.reset(); if ($pend) $pend.empty();
+      return ok;
+    }
+    if (o.editable) parametrosAdjunto().then(p => {
+      const cfg = p && p.ambitos.find(x => x.ambito === o.ambito);
+      if (!cfg) return;
+      const exts = cfg.extensiones, max = cfg.maximoMB * 1048576;
+      $el.append($('<p class="muted" style="margin:8px 0 0">').text("Tipos permitidos: " + exts.join(", ") + " · hasta " + cfg.maximoMB + " MB cada uno."
+        + (o.inmediato ? "" : " Los documentos elegidos se suben al guardar o crear el registro.")));
+      uploader = $("<div>").appendTo($el).dxFileUploader({
+        multiple: true, uploadMode: "useForm", accept: exts.join(","), allowedFileExtensions: exts, maxFileSize: max,
+        selectButtonText: "Elegir documentos", labelText: "o arrástrelos aquí",
+        invalidFileExtensionMessage: "Tipo no permitido", invalidMaxFileSizeMessage: "Supera " + cfg.maximoMB + " MB",
+        onValueChanged: e => {
+          // Conserva la descripción ya escrita de los archivos que siguen elegidos
+          pendientes = (e.value || []).filter(f => exts.some(x => f.name.toLowerCase().endsWith(x)) && f.size <= max)
+            .map(f => ({ f, d: (pendientes.find(x => x.f === f) || { d: "" }).d }));
+          pintarPendientes();
+        }
+      }).dxFileUploader("instance");
+      $pend = $("<div>").appendTo($el);
+      if (o.inmediato) pb.ui.mdActions($el, [{ text: "Adjuntar", icon: "upload", onClick: async () => {
+        if (!pendientes.length) return pb.notify("Elija uno o varios documentos", "warning");
+        await subir(token); cargar();
+      } }]);
+    });
+    cargar();
+    return { subir, validar };
+  }
+
+  // Tareas de un ítem: cada fila se despliega con los documentos de esa tarea (los adjunta su técnico o quien edita tareas)
+  function tareasDelItem($el, ts, titulo) {
+    if (titulo) $el.append($('<div class="mdtitle">').text(titulo));
+    if (!ts.length) { $el.append($('<p class="muted">').text("Aún no tiene tareas registradas.")); return; }
+    $("<div>").appendTo($el).dxDataGrid({
+      dataSource: ts, keyExpr: "token", showBorders: true, showRowLines: true, wordWrapEnabled: true, paging: { enabled: false }, columnHidingEnabled: pb.isPhone(),
+      columns: [
+        { caption: "Tarea", calculateCellValue: x => x.codigo + " · " + x.titulo, minWidth: 200 },
+        { caption: "Hito", calculateCellValue: x => x.hito || "—" }, { dataField: "area", caption: "Área" }, { dataField: "tecnico", caption: "Técnico" },
+        { caption: "Terminación", calculateCellValue: x => pb.fecha(x.fechaTerminacion) },
+        { caption: "Avance", alignment: "right", calculateCellValue: x => x.avance + " %" },
+        { caption: "Estado", calculateCellValue: x => ESTADO[x.estado] || x.estado, cellTemplate: ($c, i) => $("<span>").addClass(pb.pillCls(i.value)).text(i.value).appendTo($c) }
+      ],
+      masterDetail: { enabled: true, template: (el, i) => {
+        const $d = $('<div class="md">').appendTo(el);
+        $d.append($('<div class="mdtitle">').text("Documentos de " + i.data.codigo));
+        adjuntos($("<div>").appendTo($d), { ambito: "Tarea", token: i.data.token, inmediato: true,
+          editable: i.data.tecnicoId === pb.perfil.usuarioId || pb.can("tareas", "editar") });
+      } }
+    });
+    $el.append($('<p class="muted">').text("Despliegue una tarea con ›  para ver o adjuntar sus documentos."));
+  }
+
+  window.pry = { url, AREAS, ESTADO, iso, fechaLocal, hoy, usuarios, titulo, tareaPopup, acuerdoPopup, detalleTarea, accion, motivoSinTareas, adjuntos, tareasDelItem };
 })();

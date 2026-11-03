@@ -5,7 +5,7 @@ using ProBank.Domain.Modules.Portafolio;
 
 namespace ProBank.Application.Modules.Portafolio;
 
-public sealed record CrearTareaCommand(CrearTareaRequest Request) : ICommand<string>;
+public sealed record CrearTareaCommand(CrearTareaRequest Request) : ICommand<TareaCreadaDto>;
 public sealed record ActualizarTareaCommand(Guid Token, ActualizarTareaRequest Request) : ICommand<string>;
 public sealed record EnviarTareaCommand(Guid Token) : ICommand<string>;
 public sealed record AprobarTareaCommand(Guid Token) : ICommand<string>;
@@ -25,17 +25,17 @@ internal static class Estados
 }
 
 internal sealed class CrearTareaHandler(ITareaRepository repo, ICurrentUser user, IClock clock, IPermisos permisos)
-    : ICommandHandler<CrearTareaCommand, string>
+    : ICommandHandler<CrearTareaCommand, TareaCreadaDto>
 {
-    public async Task<Result<string>> Handle(CrearTareaCommand c, CancellationToken ct)
+    public async Task<Result<TareaCreadaDto>> Handle(CrearTareaCommand c, CancellationToken ct)
     {
-        if (await permisos.Exigir("tareas", "crear", ct) is { } e) return Result.Failure<string>(e);
+        if (await permisos.Exigir("tareas", "crear", ct) is { } e) return Result.Failure<TareaCreadaDto>(e);
         var r = c.Request;
         var itemId = await repo.ObtenerItemId(r.ItemToken, ct);
-        if (itemId is null) return Result.Failure<string>(Error.NotFound("El proyecto, mejora o bug"));
+        if (itemId is null) return Result.Failure<TareaCreadaDto>(Error.NotFound("El proyecto, mejora o bug"));
         var tarea = Tarea.Crear(itemId.Value, r.HitoId, r.Titulo, r.Area, r.TecnicoId, r.Orden, r.FechaInicio, r.FechaTerminacion, r.AprobadorIds, user.UsuarioId, clock.Hoy);
-        if (tarea.IsFailure) return Result.Failure<string>(tarea.Error);
-        return Result.Success(await repo.Crear(tarea.Value, r.DescripcionHtml, Actor.De(user), ct));
+        if (tarea.IsFailure) return Result.Failure<TareaCreadaDto>(tarea.Error);
+        return Result.Success(new TareaCreadaDto(tarea.Value.Token, await repo.Crear(tarea.Value, r.DescripcionHtml, Actor.De(user), ct)));
     }
 }
 
