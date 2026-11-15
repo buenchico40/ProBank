@@ -1,7 +1,7 @@
 # ProBank
 
-Sistema modular para los procesos de apoyo del banco: Seguridad, Coactivas, Portafolio, Presupuesto,
-Cumplimiento y auditoría, Bóveda, Marketing, Consultas dinámicas, Versiones de aplicaciones
+Sistema modular para los procesos de apoyo del banco: Seguridad, Portafolio, Presupuesto,
+Cumplimiento y auditoría, Bóveda, Decisiones, Marketing, Consultas dinámicas, Versiones de aplicaciones
 y componentes, y Reportes.
 
 ## Abrir en Visual Studio Code
@@ -76,6 +76,11 @@ el despliegue, publica el `.dacpac`, da a la identidad de la API `EXECUTE` sobre
 (muestra su clave una sola vez), sube Api y Web y vuelve a cerrar el acceso. dev usa el perfil de costo mínimo
 (App Service F1, oferta gratuita de Azure SQL, sin red privada); qa y prod usan red privada.
 
+**Módulo Coactivas retirado:** en una base que ya lo tenía, después de publicar esta versión corra una vez
+`scripts/sql/retirar-coactivas.sql` (borra el esquema `coa` y sus datos: respalde antes). Las opciones del menú, los permisos y el
+rol «Analista de coactivas» los limpia el propio despliegue. Terraform ya no crea el contenedor `oficios` de Blob Storage: al
+aplicar se borra con sus archivos, así que respáldelo antes si los necesita.
+
 ## Estructura
 
 | Carpeta | Contenido |
@@ -95,14 +100,15 @@ el despliegue, publica el `.dacpac`, da a la identidad de la API `EXECUTE` sobre
 |---|---|
 | Diseño (cabecera, menú en acordeón, pie, Panel, grillas y fichas) | Igual al prototipo, con DevExtreme (`wwwroot/js/probank.js`, `site.css`) |
 | Seguridad (usuarios, roles y permisos, parámetros de acceso, auditoría, perfil) | De punta a punta; permisos por rol aplicados en el menú, la API y los SP |
-| Coactivas (oficios, coactivas, bloqueos, levantamientos, transferencias, carga masiva, coactivas por cliente) | De punta a punta |
 | Portafolio (ítems, hitos, tareas, aprobaciones, cronograma Gantt, acuerdos semanales, informes con DevExpress Reporting, documentos adjuntos, parametrización) | De punta a punta |
 | Marketing (imágenes promocionales del Panel y del inicio de sesión, comunicados estructurados) | De punta a punta |
 | Presupuesto por área, con áreas configurables, inicialmente TI (partidas y ejecución, ajustes y movimientos, renovaciones con aviso, solicitudes de compra, pagos con distribución, contratos y facturas, reporte PDF de servicios, pagos y presupuestado) | De punta a punta |
 | Consultas dinámicas (bases de datos con secreto en Key Vault, catálogo con definición leída del SP, parámetros fijos o variables, aprobaciones, resultados y exportación en 5 formatos, auditoría, envíos programados por correo) | De punta a punta (pendiente: enlace que vence para archivos grandes y grupos de Entra ID) |
+| Bóveda (grupos de acceso, certificados con renovaciones, cuentas técnicas y secretos con versiones; mostrar y copiar auditados solo para el grupo; valores con Always Encrypted) | De punta a punta (pendiente: avisos de vencimiento en el Panel) |
+| Decisiones (tipos con flujo y aprobadores, registro con notificados y archivos de respaldo, firma electrónica con clave y sello SHA-256, modificación con nueva versión y nuevas firmas, trazabilidad, PDF firmado con el certificado del banco) | De punta a punta (pendiente: avisos por correo) |
 | Configuración (parámetros generales por categoría: correo por Microsoft 365 o SMTP con prueba de envío, conservación de resultados y adjuntos de Consultas dinámicas; cambios auditados) | De punta a punta |
 | Demás módulos | Esquema de base de datos y página de inicio del área; reglas en `spec/modulos/` y pantallas en `prototype/` |
-| Pruebas unitarias | Seguridad, claves, coactivas y carga masiva, tareas e informes, adjuntos, marketing, presupuesto TI, aprobación, variables de fecha, versiones y programación |
+| Pruebas unitarias | Seguridad, claves, tareas e informes, adjuntos, marketing, presupuesto TI, bóveda, decisiones, aprobación, variables de fecha, versiones y programación |
 | Playwright | 8 pruebas pasan contra la maqueta (`--project=prototipo`); el resto queda como `test.fixme` por requisito |
 | Terraform | Módulos y ambientes dev, qa y prod |
 

@@ -109,9 +109,9 @@ test.describe('Consultas dinámicas', () => {
     const yo = await page.evaluate(() => (window as any).pb.sesion.nombre as string);
     const otro = opciones.usuarios.find((u: any) => u.nombre !== yo);
     test.skip(!otro, 'Se necesita otro usuario activo como aprobador');
-    const { cx, codigo } = await consultaPublicada(page, 'e2e · Coactivas por entidad', 'rpt.usp_Coactivas_PorEntidad', [otro.token]);
+    const { cx, codigo } = await consultaPublicada(page, 'e2e · Pagos con aprobación', 'rpt.usp_Pagos_PorProveedor', [otro.token]);
     const d = (await datos(page, 'Consulta', 'codigo=' + codigo)).json;
-    // Los parámetros leídos nacen obligatorios: sin entidad ni estado, el reporte trae todo
+    // Los parámetros leídos nacen obligatorios; aquí solo se prueba la aprobación (no llega a ejecutarse)
     const parametros = d.parametros.map((p: any) => ({ ...p, obligatorio: false }));
     expect((await datos(page, 'GuardarParametros', 'codigo=' + codigo, { parametros })).status).toBe(200);
     if (d.estado !== 'Publicada') expect((await datos(page, 'EstadoConsulta', `codigo=${codigo}&accion=Publicar`, {})).status).toBe(200);

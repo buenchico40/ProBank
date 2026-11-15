@@ -5,7 +5,6 @@ AS
 BEGIN
     SET NOCOUNT ON;
     SELECT
-        (SELECT COUNT(*) FROM coa.vw_Coactiva WHERE Estado = 'Activo') AS CoactivasActivas,
         -- Pendiente para el aprobador: tarea En revisión sin su decisión en la ronda vigente (si la última ronda terminó en
         -- rechazo y la tarea volvió a enviarse, la ronda vigente es una nueva, sin decisiones)
         (SELECT COUNT(*) FROM pry.Tarea t JOIN pry.TareaAprobador ta ON ta.TareaId = t.TareaId AND ta.UsuarioId = @UsuarioId
@@ -16,10 +15,6 @@ BEGIN
         (SELECT COUNT(*) FROM pry.Tarea WHERE TecnicoId = @UsuarioId AND Estado <> 'Completada') AS TareasAsignadas,
         (SELECT COUNT(*) FROM com.Renovacion WHERE Estado <> 'Retirado'
          AND Vence >= @Hoy AND Vence <= DATEADD(DAY, DiasAviso, @Hoy)) AS RenovacionesPorVencer;
-
-    -- COA-05: cobertura de las coactivas no anuladas
-    SELECT x.Etiqueta, (SELECT COUNT(*) FROM coa.vw_Coactiva c WHERE c.Anulada = 0 AND c.Cobertura = x.Etiqueta) AS Valor
-    FROM (VALUES (1, 'Total'), (2, 'Parcial'), (3, 'Sin bloqueo')) AS x (Orden, Etiqueta) ORDER BY x.Orden;
 
     SELECT x.Etiqueta, (SELECT COUNT(*) FROM pry.Item i WHERE i.Tipo = x.Etiqueta AND i.Estado NOT IN ('Anulado', 'Cerrado')) AS Valor
     FROM (VALUES (1, 'Proyecto'), (2, 'Mejora'), (3, 'Bug')) AS x (Orden, Etiqueta) ORDER BY x.Orden;

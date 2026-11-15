@@ -13,12 +13,11 @@ internal sealed class PanelRepository(ISqlConnectionFactory db) : IPanelReposito
         using var m = await cn.QueryMultipleAsync(new CommandDefinition("rpt.usp_Panel_Resumen",
             new { UsuarioId = usuarioId, RolActivo = rolActivo, Hoy = hoy.ToDateTime(TimeOnly.MinValue) }, commandType: Sp.Tipo, cancellationToken: ct));
         var k = await m.ReadSingleAsync<Kpis>();
-        var cobertura = (await m.ReadAsync<SerieDto>()).ToList();
         var items = (await m.ReadAsync<SerieDto>()).ToList();
         var promos = (await m.ReadAsync<PromocionPanelDto>()).ToList();
         var comunicados = (await m.ReadAsync<ComunicadoPanelDto>()).ToList();
-        return new PanelDto(k.CoactivasActivas, k.AprobacionesPendientes, k.TareasAsignadas, k.RenovacionesPorVencer, cobertura, items, promos, comunicados);
+        return new PanelDto(k.AprobacionesPendientes, k.TareasAsignadas, k.RenovacionesPorVencer, items, promos, comunicados);
     }
 
-    private sealed record Kpis(int CoactivasActivas, int AprobacionesPendientes, int TareasAsignadas, int RenovacionesPorVencer);
+    private sealed record Kpis(int AprobacionesPendientes, int TareasAsignadas, int RenovacionesPorVencer);
 }

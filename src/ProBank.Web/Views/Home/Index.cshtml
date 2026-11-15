@@ -24,8 +24,8 @@
     }
 
     // Indicadores: montados sobre el borde inferior del carrusel; toda la tarjeta abre su detalle
-    const kpis = [["Coactivas activas", d.coactivasActivas, "coactivas", "money"], ["Aprobaciones pendientes", d.aprobacionesPendientes, "aprobaciones", "check"],
-                  ["Tareas asignadas", d.tareasAsignadas, "tareas", "event"], ["Renovaciones por vencer", d.renovacionesPorVencer, "renovaciones", "refresh"]];
+    const kpis = [["Aprobaciones pendientes", d.aprobacionesPendientes, "aprobaciones", "check"], ["Tareas asignadas", d.tareasAsignadas, "tareas", "event"],
+                  ["Renovaciones por vencer", d.renovacionesPorVencer, "renovaciones", "refresh"]];
     const $k = $('<div class="kpis">').toggleClass("kpis-flotantes", promos.length > 0).appendTo($content);
     kpis.forEach(k => {
       const $c = $('<div class="card kpi">').toggleClass("cero", !k[1]).appendTo($k);
@@ -61,18 +61,9 @@
     });
     if (rest.length > 6) $cc.append($('<span class="muted">').text("y " + (rest.length - 6) + " más en Marketing › Comunicados"));
 
-    // Gráficos compactos: barras horizontales finas (cobertura) y dona con leyenda (ítems de TI)
+    // Gráfico compacto: dona con leyenda (ítems de TI)
     const $ch = $('<div class="charts charts-compactas">').appendTo($content);
     const tarjeta = t => $('<div class="card">').append($("<h2>").text(t)).appendTo($ch);
-    $("<div>").appendTo(tarjeta("Cobertura de coactivas")).dxChart({
-      dataSource: d.cobertura.map(x => ({ label: x.etiqueta, value: x.valor })), rotated: true, size: { height: 140 }, legend: { visible: false },
-      commonSeriesSettings: { argumentField: "label", valueField: "value", type: "bar", barPadding: 0.45, cornerRadius: 3,
-        label: { visible: true, backgroundColor: "transparent", position: "outside", font: { family: FONT, color: "#1B2430", weight: 600 } } },
-      series: [{ name: "Coactivas", color: ac }],
-      valueAxis: { visible: false, grid: { visible: false }, tick: { visible: false }, minorTick: { visible: false }, label: { visible: false }, valueMarginsEnabled: true, maxValueMargin: 0.15, allowDecimals: false },
-      argumentAxis: { inverted: true, label: { font: { family: FONT, color: "#46505E" } }, tick: { visible: false } },
-      tooltip: { enabled: true, font: { family: FONT }, customizeTooltip: a => ({ text: a.argumentText + ": " + a.valueText }) }
-    });
     $("<div>").appendTo(tarjeta("Ítems de TI por tipo")).dxPieChart({
       dataSource: d.items.map(x => ({ label: x.etiqueta, value: x.valor })), type: "doughnut", innerRadius: 0.62, size: { height: 140 },
       palette: [ac, "#1E7B3A", "#D40E14"], resolveLabelOverlapping: "shift",

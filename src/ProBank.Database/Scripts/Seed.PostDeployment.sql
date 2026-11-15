@@ -2,7 +2,6 @@
 MERGE seg.Rol AS t
 USING (VALUES ('Administrador', N'Acceso a todos los módulos y a la administración de seguridad'),
               ('Gerencia de TI', N'Portafolio, aprobaciones, compras y reportes de TI'),
-              ('Analista de coactivas', N'Oficios, coactivas y bloqueo de fondos'),
               ('Compras TI', N'Solicitudes de compra y pagos'),
               ('Cumplimiento', N'Controles regulatorios, auditorías y hallazgos'),
               ('Seguridad de la información', N'Certificados, cuentas técnicas, secretos y auditoría'),
@@ -12,13 +11,27 @@ ON t.Nombre = s.Nombre
 WHEN MATCHED AND t.Descripcion IS NULL THEN UPDATE SET Descripcion = s.Descripcion
 WHEN NOT MATCHED THEN INSERT (Nombre, Descripcion) VALUES (s.Nombre, s.Descripcion);
 
+-- Módulo retirado (Coactivas): sus opciones y funciones salen del menú y de los permisos; el rol «Analista de coactivas» se
+-- borra si nadie lo tiene (si alguien lo tiene, queda sin esos permisos y se administra en Seguridad › Roles y permisos).
+DELETE FROM seg.Permiso WHERE Opcion IN ('oficios', 'coactivas', 'clientes');
+DELETE FROM seg.OpcionAccion WHERE Opcion IN ('oficios', 'coactivas', 'clientes');
+DELETE FROM seg.Opcion WHERE Opcion IN ('oficios', 'coactivas', 'clientes');
+DECLARE @Retirado INT = (SELECT RolId FROM seg.Rol WHERE Nombre = 'Analista de coactivas');
+IF @Retirado IS NOT NULL AND NOT EXISTS (SELECT 1 FROM seg.UsuarioRol WHERE RolId = @Retirado)
+BEGIN
+    DELETE FROM seg.Permiso WHERE RolId = @Retirado;
+    DELETE FROM pry.AccionRol WHERE RolId = @Retirado;
+    DELETE FROM rpt.ConsultaRol WHERE RolId = @Retirado;
+    UPDATE seg.Usuario SET RolPredeterminado = NULL WHERE RolPredeterminado = 'Analista de coactivas';
+    DELETE FROM seg.Rol WHERE RolId = @Retirado;
+END;
+
 -- SEG-03: opciones del menú (mismas claves que el prototipo y que el menú de la Web)
 MERGE seg.Opcion AS t
 USING (VALUES
     ('inicio', N'Inicio', N'Inicio / Panel', 1),
     ('usuarios', N'Seguridad', N'Usuarios', 10), ('roles', N'Seguridad', N'Roles y permisos', 11),
     ('params', N'Seguridad', N'Parámetros de acceso', 12), ('auditoria', N'Seguridad', N'Auditoría', 13),
-    ('oficios', N'Coactivas', N'Oficios', 20), ('coactivas', N'Coactivas', N'Coactivas', 21), ('clientes', N'Coactivas', N'Coactivas por cliente', 22),
     ('proyectos', N'Portafolio', N'Proyectos, mejoras y bugs', 30), ('gantt', N'Portafolio', N'Cronograma (Gantt)', 31),
     ('tareas', N'Portafolio', N'Mis tareas', 32), ('aprobaciones', N'Portafolio', N'Aprobaciones', 33),
     ('acuerdos', N'Portafolio', N'Acuerdos semanales', 34), ('informes', N'Portafolio', N'Informes de seguimiento', 35),
@@ -31,6 +44,8 @@ USING (VALUES
     ('grupos', N'Bóveda', N'Grupos de acceso', 60), ('certificados', N'Bóveda', N'Certificados digitales', 61),
     ('cuentas', N'Bóveda', N'Cuentas técnicas', 62), ('secretos', N'Bóveda', N'Secretos', 63),
     ('promos', N'Marketing', N'Imágenes promocionales', 70), ('comunicados', N'Marketing', N'Comunicados', 71),
+    ('decisiones', N'Decisiones', N'Registro de decisiones', 74), ('pendientes', N'Decisiones', N'Mis aprobaciones', 75),
+    ('tiposdec', N'Decisiones', N'Tipos de decisión', 76),
     ('consultas', N'Consultas dinámicas', N'Catálogo de consultas', 80), ('ejecuciones', N'Consultas dinámicas', N'Ejecuciones y aprobaciones', 81),
     ('audejec', N'Consultas dinámicas', N'Auditoría de ejecuciones', 82), ('conexiones', N'Consultas dinámicas', N'Bases de datos', 83),
     ('reportes', N'Reportes', N'Reportería por módulo', 90), ('catreportes', N'Reportes', N'Catálogo de reportes', 91),
@@ -52,9 +67,6 @@ USING (
     SELECT f.Opcion, f.Accion, f.Nombre, 'Funcion', f.Orden
     FROM (VALUES ('usuarios', 'revocar', N'Revocar sesiones', 10), ('usuarios', 'clave', N'Restablecer contraseña', 11),
                  ('usuarios', 'desbloquear', N'Desbloquear usuario', 12),
-                 ('oficios', 'carga', N'Carga masiva (Excel)', 10),
-                 ('coactivas', 'bloquear', N'Bloquear fondos', 10), ('coactivas', 'levantar', N'Levantar bloqueo', 11),
-                 ('coactivas', 'transferir', N'Transferir fondos a la entidad', 12),
                  ('tareas', 'enviar', N'Enviar a aprobar', 10), ('acuerdos', 'cumplir', N'Marcar cumplido', 10),
                  ('informes', 'generar', N'Generar informe', 10),
                  ('cuentas', 'mostrar', N'Mostrar contraseña', 10), ('cuentas', 'copiar', N'Copiar contraseña', 11),
@@ -64,6 +76,13 @@ ON t.Opcion = s.Opcion AND t.Accion = s.Accion
 WHEN MATCHED THEN UPDATE SET Nombre = s.Nombre, Tipo = s.Tipo, Orden = s.Orden
 WHEN NOT MATCHED THEN INSERT (Opcion, Accion, Nombre, Tipo, Orden) VALUES (s.Opcion, s.Accion, s.Nombre, s.Tipo, s.Orden)
 OUTPUT $action, inserted.Opcion, inserted.Accion, inserted.Tipo INTO @Nuevas;
+
+-- DEC-03: «Mis aprobaciones» está abierta a todos los roles (los aprobadores son personas, no roles): cuando la opción aparece
+-- en una versión nueva se concede a los roles que ya existen. Si un administrador la quita después, no se vuelve a dar.
+INSERT seg.Permiso (RolId, Opcion, Accion)
+SELECT r.RolId, n.Opcion, n.Accion FROM @Nuevas n CROSS JOIN seg.Rol r
+WHERE n.Operacion = 'INSERT' AND n.Opcion = 'pendientes' AND n.Accion IN ('ver', 'aprobar')
+  AND NOT EXISTS (SELECT 1 FROM seg.Permiso x WHERE x.RolId = r.RolId AND x.Opcion = n.Opcion AND x.Accion = n.Accion);
 
 -- Funciones que aparecen en una versión nueva: se conceden a los roles que ya pueden editar esa opción
 -- (como en el prototipo: la función sigue a la acción base). Las que un administrador quite después no se vuelven a dar.
@@ -166,10 +185,10 @@ INSERT @Inicial (Rol, Modulo, Opcion, Acciones) VALUES
     -- Todos: panel, sus tareas y aprobaciones (técnicos y aprobadores no son roles) y solicitar consultas dinámicas
     ('*', NULL, 'inicio', 'ver'), ('*', NULL, 'tareas', 'ver,enviar'), ('*', NULL, 'aprobaciones', 'ver,aprobar'),
     ('*', NULL, 'ejecuciones', 'ver,crear,exportar,aprobar'),
-    ('Analista de coactivas', N'Coactivas', NULL, 'ver,crear,editar,eliminar,exportar,carga,bloquear,levantar,transferir'),
-    ('Analista de coactivas', NULL, 'reportes', 'ver,exportar'),
+    ('*', NULL, 'pendientes', 'ver,aprobar'),
     ('Gerencia de TI', N'Portafolio', NULL, 'ver,crear,editar,eliminar,exportar,aprobar,enviar,cumplir,generar'),
     ('Gerencia de TI', N'Presupuesto', NULL, 'ver,crear,editar,eliminar,exportar,aprobar'),
+    ('Gerencia de TI', NULL, 'decisiones', 'ver,crear,editar,exportar'),
     ('Gerencia de TI', N'Cumplimiento y auditoría', NULL, 'ver,exportar'),
     ('Gerencia de TI', NULL, 'reportes', 'ver,exportar'), ('Gerencia de TI', NULL, 'catreportes', 'ver,exportar'),
     ('Gerencia de TI', NULL, 'consultas', 'ver,exportar'), ('Gerencia de TI', NULL, 'audejec', 'ver,exportar'),

@@ -7,7 +7,7 @@ public sealed class AdjuntoTests
     private static readonly byte[] Pdf = "%PDF-1.7"u8.ToArray();
     private static readonly byte[] Zip = [0x50, 0x4B, 0x03, 0x04, 0x14, 0x00, 0x06, 0x00];
     private static readonly byte[] Ole = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
-    private static readonly byte[] Sql = "SELECT * FROM coa.Coactiva;\r\n"u8.ToArray();
+    private static readonly byte[] Sql = "SELECT * FROM pry.Item;\r\n"u8.ToArray();
     private static readonly string[] Tarea = [".zip", ".sql", ".pdf", ".doc", ".docx"];
 
     [Theory(DisplayName = "Adjuntos · se aceptan los tipos habilitados con su contenido real")]

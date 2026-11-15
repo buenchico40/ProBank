@@ -13,3 +13,4 @@ Una decisión por archivo, numerada. Para cambiar una decisión se agrega un ADR
 - [Pruebas de punta a punta con Playwright en TypeScript](0009-playwright-typescript.md)
 - [Inicio de sesión con usuario y contraseña](0010-usuario-y-clave.md)
 - [Correo por Microsoft Graph o SMTP, configurado en la aplicación](0011-correo-smtp.md)
+- [Firma electrónica de decisiones y PDF sellado por el banco](0012-firma-decisiones.md)

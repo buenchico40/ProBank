@@ -13,7 +13,7 @@ BEGIN
     DECLARE @Nuevos TABLE (UsuarioId INT PRIMARY KEY);
     INSERT @Nuevos (UsuarioId)
     SELECT DISTINCT TRY_CAST(LTRIM(RTRIM(value)) AS INT) FROM STRING_SPLIT(ISNULL(@Miembros, ''), ',')
-    WHERE TRY_CAST(LTRIM(RTRIM(value)) AS INT) IS NOT NULL;
+    WHERE LTRIM(RTRIM(value)) <> '' AND TRY_CAST(LTRIM(RTRIM(value)) AS INT) IS NOT NULL;
     IF EXISTS (SELECT 1 FROM @Nuevos n LEFT JOIN seg.Usuario u ON u.UsuarioId = n.UsuarioId AND u.Estado = 'Activo' WHERE u.UsuarioId IS NULL)
         THROW 50422, N'Los miembros deben ser usuarios activos de ProBank.', 1;
 

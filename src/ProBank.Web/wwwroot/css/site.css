@@ -521,3 +521,11 @@ body.ingreso.con-fondo{flex-direction:column;gap:16px;position:relative;backgrou
 .charts-compactas h2{font-size:14px;margin:0}
 @media (max-width:640px){.panel-hero{--hero-texto:104px;height:240px}.hero-texto{padding:8px 16px 46px}.hero-texto strong{font-size:17px}.kpis-flotantes{margin:-40px 8px 0;grid-template-columns:1fr 1fr}}
 @media (prefers-reduced-motion:reduce){.kpi-link{transition:none}.kpi-link:hover{transform:none}}
+/* Decisiones: descripción con formato (editor enriquecido) */
+.dec-desc{margin:0 0 8px;font-size:13.5px;line-height:1.5;color:var(--fg);overflow-wrap:anywhere}
+.dec-desc p{margin:0 0 4px}
+.dec-desc h3,.dec-desc h4{margin:8px 0 4px;font-size:14px}
+.dec-desc ul,.dec-desc ol{margin:2px 0 6px;padding-left:22px}
+.dec-desc blockquote{margin:4px 0;padding:4px 10px;border-left:3px solid var(--line);color:var(--fg2)}
+.dec-desc table{border-collapse:collapse;margin:6px 0}
+.dec-desc th,.dec-desc td{border:1px solid var(--line);padding:4px 8px;text-align:left;vertical-align:top}

@@ -38,7 +38,7 @@ resource "azurerm_storage_account" "this" {
 }
 
 resource "azurerm_storage_container" "this" {
-  for_each              = toset(["oficios", "adjuntos", "exportaciones", "marketing", "despliegues"])
+  for_each              = toset(["adjuntos", "exportaciones", "marketing", "despliegues"])
   name                  = each.key
   storage_account_id    = azurerm_storage_account.this.id
   container_access_type = "private"

@@ -9,7 +9,6 @@
 |---|---|
 | Administrador | Todas las opciones; asigna roles y permisos |
 | Gerencia de TI | Líder de proyecto: Portafolio, Presupuesto, Versiones |
-| Analista de coactivas | Oficios, coactivas y órdenes judiciales |
 | Compras TI | Solicitudes, renovaciones y pagos |
 | Cumplimiento | Controles, auditorías y hallazgos |
 | Seguridad de la información | Certificados, cuentas técnicas y secretos |

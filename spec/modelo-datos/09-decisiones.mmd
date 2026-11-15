@@ -1,0 +1,87 @@
+erDiagram
+  TipoDecision ||--o{ TipoAprobador : "propone"
+  TipoDecision ||--o{ Decision : clasifica
+  Decision ||--o{ DecisionAprobador : "firman"
+  Decision ||--o{ DecisionNotificado : "están al tanto"
+  Decision ||--o{ DecisionVersion : versiones
+  DecisionVersion ||--o{ FirmaAnterior : "firmas anteriores"
+  Decision ||--o{ DecisionEvento : trazabilidad
+  Decision ||--o{ DecisionAdjunto : "archivos de respaldo"
+  TipoDecision {
+    int TipoId PK
+    varchar Codigo "TDE-NN"
+    nvarchar Nombre
+    bit Secuencial "en secuencia o todos a la vez"
+    bit Activo
+  }
+  TipoAprobador {
+    int TipoId PK,FK
+    int UsuarioId PK,FK "seg.Usuario"
+    int Orden
+  }
+  Decision {
+    int DecisionId PK
+    uniqueidentifier Token
+    varchar Codigo "DEC-NNNN"
+    int TipoId FK
+    nvarchar Titulo
+    nvarchar Descripcion
+    nvarchar Area
+    date Fecha
+    nvarchar Estado "Borrador, En aprobación, Aprobada, Rechazada, Anulada"
+    int Version
+    varbinary Huella "SHA-256 del contenido de la versión"
+    int CreadoPorId FK "seg.Usuario"
+  }
+  DecisionAprobador {
+    int DecisionId PK,FK
+    int UsuarioId PK,FK "seg.Usuario"
+    int Orden
+    nvarchar Origen "Tipo o Agregado"
+    nvarchar Resultado "Pendiente, Aprobada, Rechazada"
+    datetime2 Fecha
+    varchar Ip
+    varbinary Sello "SHA-256: huella, usuario, resultado, fecha, comentario, IP"
+  }
+  DecisionNotificado {
+    int DecisionId PK,FK
+    int UsuarioId PK,FK "seg.Usuario"
+    int AgregadoPorId FK
+    datetime2 Fecha
+  }
+  DecisionVersion {
+    int DecisionId PK,FK
+    int Version PK
+    nvarchar Titulo
+    nvarchar Descripcion
+    varbinary Huella
+    nvarchar Motivo
+    int UsuarioId FK
+  }
+  FirmaAnterior {
+    int DecisionId PK,FK
+    int Version PK,FK
+    int UsuarioId PK,FK
+    nvarchar Resultado
+    datetime2 Fecha
+    varbinary Sello
+  }
+  DecisionEvento {
+    bigint EventoId PK
+    int DecisionId FK
+    datetime2 Fecha
+    int UsuarioId FK
+    nvarchar Evento
+    nvarchar Detalle
+    varchar Ip
+  }
+  DecisionAdjunto {
+    int AdjuntoId PK
+    uniqueidentifier Token
+    int DecisionId FK
+    nvarchar Nombre
+    bigint Tamano
+    varbinary Hash "SHA-256 del archivo (fuera de la huella de la decisión)"
+    varchar Ruta "Blob Storage adjuntos/dec/..."
+    int UsuarioId FK
+  }

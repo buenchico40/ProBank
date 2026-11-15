@@ -1,8 +1,8 @@
 namespace ProBank.Contracts;
 
 /// <summary>Inicio / Panel: indicadores, gráficos y contenidos vigentes de Marketing para el rol activo.</summary>
-public sealed record PanelDto(int CoactivasActivas, int AprobacionesPendientes, int TareasAsignadas, int RenovacionesPorVencer,
-    IReadOnlyList<SerieDto> Cobertura, IReadOnlyList<SerieDto> Items, IReadOnlyList<PromocionPanelDto> Promociones,
+public sealed record PanelDto(int AprobacionesPendientes, int TareasAsignadas, int RenovacionesPorVencer,
+    IReadOnlyList<SerieDto> Items, IReadOnlyList<PromocionPanelDto> Promociones,
     IReadOnlyList<ComunicadoPanelDto> Comunicados);
 
 public sealed record SerieDto(string Etiqueta, int Valor);

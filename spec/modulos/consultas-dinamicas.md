@@ -59,8 +59,7 @@
 
 rpt.Conexion, rpt.Consulta, rpt.ConsultaConexion, rpt.ConsultaRol, rpt.ConsultaAprobador, rpt.Parametro, rpt.Ejecucion,
 rpt.EjecucionAprobador, rpt.EjecucionEvento, rpt.Programacion, rpt.ProgramacionDestinatario. Solo procedimientos almacenados
-(`<esquema>.usp_<Entidad>_<Accion>`). Procedimientos de reporte de ejemplo sobre ProBank: `rpt.usp_Pagos_PorProveedor` y
-`rpt.usp_Coactivas_PorEntidad`.
+(`<esquema>.usp_<Entidad>_<Accion>`). Procedimiento de reporte de ejemplo sobre ProBank: `rpt.usp_Pagos_PorProveedor`.
 
 ## Pruebas
 

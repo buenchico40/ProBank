@@ -76,6 +76,35 @@ resource "azurerm_key_vault_key" "cmk" {
   depends_on   = [time_sleep.rbac]
 }
 
+# Certificado con el que la API firma los PDF de Decisiones (DEC-04). Se crea autofirmado para que el ambiente funcione desde el
+# primer despliegue; para validez ante terceros, importe en Key Vault con este mismo nombre el certificado de firma emitido por
+# una entidad acreditada (ver docs/runbooks/rotacion-llaves.md). La API lo lee como el secreto «firma-documentos».
+resource "azurerm_key_vault_certificate" "firma" {
+  name         = "firma-documentos"
+  key_vault_id = azurerm_key_vault.this.id
+  certificate_policy {
+    issuer_parameters { name = "Self" }
+    key_properties {
+      exportable = true
+      key_size   = 3072
+      key_type   = "RSA"
+      reuse_key  = false
+    }
+    secret_properties { content_type = "application/x-pkcs12" }
+    lifetime_action {
+      action { action_type = "AutoRenew" }
+      trigger { days_before_expiry = 30 }
+    }
+    x509_certificate_properties {
+      subject            = "CN=ProBank Firma de documentos"
+      validity_in_months = 24
+      key_usage          = ["digitalSignature", "nonRepudiation"]
+    }
+  }
+  lifecycle { ignore_changes = [certificate_policy] } # el importado por operaciones reemplaza al autofirmado
+  depends_on = [time_sleep.rbac]
+}
+
 resource "azurerm_private_endpoint" "this" {
   count               = var.red_privada ? 1 : 0
   name                = "pe-kv-${var.nombre}"

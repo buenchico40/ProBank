@@ -63,6 +63,15 @@ public interface IUnitOfWork
 }
 
 /// <summary>Archivos de la aplicación: Blob Storage en Azure; una carpeta local cuando no hay cuenta configurada.</summary>
+/// <summary>
+/// HTML de un editor enriquecido, limpio con una lista cerrada de etiquetas (sin scripts, estilos, iframes ni atributos on*),
+/// y su texto plano para validar que no esté vacío. El texto sin etiquetas se toma como texto: los saltos de línea se conservan.
+/// </summary>
+public interface IHtmlSeguro
+{
+    (string Html, string Texto) Limpiar(string? html);
+}
+
 public interface IAlmacenArchivos
 {
     Task Guardar(string contenedor, string ruta, Stream contenido, string tipo, CancellationToken ct);

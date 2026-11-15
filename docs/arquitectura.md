@@ -3,7 +3,7 @@
 ## Requisitos base
 La arquitectura debe ser n capas, debe manejar la interfaz estándar en todas las páginas, UX/UI. La solución debe ser responsive y ajustarse a los diferentes dispositivos. Físicamente deben estar separados el Front-end Intranet, Back-end y la Base de datos en Azure. Las tecnologías a utilizar son .NET 10, Dapper, CQRS, DevExpress para el front-end, SQL Server, Blob Storage, Azure, Azure OpenAI, Foundry, Document Intelligence y segundo factor. La identidad de los usuarios se gestiona con Microsoft Entra ID (reemplaza al Active Directory on-premise).
 
-Módulos de esta versión: Seguridad, Coactivas, Portafolio, Presupuesto, Cumplimiento y auditoría, Bóveda, Marketing, Consultas dinámicas, Versiones de aplicaciones y componentes, Reportes y Configuración.
+Módulos de esta versión: Seguridad, Portafolio, Presupuesto, Cumplimiento y auditoría, Bóveda, Decisiones, Marketing, Consultas dinámicas, Versiones de aplicaciones y componentes, Reportes y Configuración.
 
 ---
 
@@ -18,7 +18,7 @@ flowchart TB
     FE["Front-end intranet · App Service<br/>ASP.NET Core MVC + DevExpress/DevExtreme"]
     BE["Back-end / API · App Service<br/>.NET 10 · CQRS · Dapper · Polly · rate limit<br/>+ proceso en 2º plano (cola y programador en SQL Server)"]
     DB[("SQL Server<br/>Always Encrypted<br/>solo SP")]
-    BL[("Blob Storage<br/>oficios, contratos, facturas,<br/>exportaciones")]
+    BL[("Blob Storage<br/>adjuntos, contratos, facturas,<br/>exportaciones")]
     KV["Key Vault<br/>llave maestra Always Encrypted<br/>cadenas de conexión de consultas"]
     AI["Azure OpenAI / AI Foundry<br/>Document Intelligence"]
     RS["Servidor de reportes<br/>DevExpress o SSRS / Power BI<br/>(pendiente)"]
@@ -60,14 +60,14 @@ flowchart TB
 
 ## 2. Arquitectura lógica
 
-Sistema modular en n capas. Cada módulo es una carpeta de dominio propia y se desarrolla sin afectar a los demás: Seguridad, Coactivas, Portafolio, Presupuesto, Cumplimiento y auditoría, Bóveda, Marketing, Consultas dinámicas, Versiones y Reportes.
+Sistema modular en n capas. Cada módulo es una carpeta de dominio propia y se desarrolla sin afectar a los demás: Seguridad, Portafolio, Presupuesto, Cumplimiento y auditoría, Bóveda, Decisiones, Marketing, Consultas dinámicas, Versiones y Reportes.
 
 ```mermaid
 flowchart TB
   P["<b>Presentación · Front-end MVC</b><br/>Vistas DevExtreme: grids master-detail, formularios, HtmlEditor,<br/>Gantt, charts, visor de reportes · tema servido por API"]
   A["<b>API · Back-end</b><br/>Controladores por módulo · autenticación con Entra ID (OpenID Connect)<br/>autorización por rol activo · rate limit por usuario<br/>revocación por cambio de IP · tokens opacos (anti-IDOR)"]
   C["<b>Aplicación · CQRS</b><br/>Comandos: crear, editar, anular, aprobar, ejecutar, programar<br/>Consultas: listados paginados, detalle, reportes<br/>Transacciones en aplicación y, cuando se puede, en el SP"]
-  D["<b>Dominio</b> · una carpeta por módulo<br/>Seguridad · Coactivas · Portafolio · Presupuesto<br/>Cumplimiento y auditoría · Bóveda · Marketing<br/>Consultas dinámicas · Versiones · Reportes"]
+  D["<b>Dominio</b> · una carpeta por módulo<br/>Seguridad · Portafolio · Presupuesto<br/>Cumplimiento y auditoría · Bóveda · Decisiones · Marketing<br/>Consultas dinámicas · Versiones · Reportes"]
   I["<b>Infraestructura</b><br/>Dapper + SP de consulta y de ejecución · Polly<br/>Blob Storage · Microsoft Graph (perfil, grupos, correo) · Azure OpenAI<br/>Document Intelligence · API on-premise · Key Vault"]
   X["<b>Transversal</b><br/>Auditoría · observabilidad<br/>notificaciones · cola y programador de tareas"]
   P --> A --> C --> D
@@ -82,7 +82,7 @@ flowchart TB
 | Presentación (Front-end MVC) | Vistas con DevExtreme: grids con detalle desplegable y solo buscador, formularios, editor enriquecido, Gantt, gráficos, visor de reportes. Responsive. Tema parametrizable por API. |
 | API (Back-end) | Controladores por módulo. Autenticación con Microsoft Entra ID (OpenID Connect), autorización por rol activo, rate limit por usuario, revocación de sesión si aparece otra IP, tokens opacos en lugar de ID. |
 | Aplicación (CQRS) | Comandos y consultas separados. Manejo de transacciones. |
-| Dominio | Reglas de negocio de cada módulo. Ejemplos: una coactiva se ejecuta por orden judicial y admite bloqueo parcial; una tarea o una versión con varios aprobadores necesita la aprobación de todos; los pagos descuentan del presupuesto por partida; las credenciales solo las ven los miembros de su grupo de acceso. |
+| Dominio | Reglas de negocio de cada módulo. Ejemplos: una tarea o una versión con varios aprobadores necesita la aprobación de todos; los pagos descuentan del presupuesto por partida; las credenciales solo las ven los miembros de su grupo de acceso. |
 | Infraestructura | Dapper únicamente con procedimientos almacenados (SP de consulta y SP de ejecución en la misma base), Polly para reintentos, integración con Microsoft Graph (Entra ID y correo), servicios Azure y la API on-premise. |
 | Transversal | Auditoría de todas las acciones (incluye consultas de credenciales, cambios de rol y cada ejecución de consultas dinámicas), no editable ni eliminable. Observabilidad con Application Insights. Notificaciones, cola y programador de tareas. |
 
@@ -121,7 +121,7 @@ Los reportes se diseñan y alojan en el servidor de reportes. ProBank solo regis
 
 ## 4. Solución .NET: distribución de proyectos
 
-Dos desplegables independientes (Web y Api), un proyecto de base de datos y una solución de pruebas aparte. Cada módulo es una carpeta en cada capa: Seguridad, Coactivas, Portafolio, Presupuesto, Cumplimiento, Boveda, Marketing, ConsultasDinamicas, Versiones, Reportes.
+Dos desplegables independientes (Web y Api), un proyecto de base de datos y una solución de pruebas aparte. Cada módulo es una carpeta en cada capa: Seguridad, Portafolio, Presupuesto, Cumplimiento, Boveda, Decisiones, Marketing, ConsultasDinamicas, Versiones, Reportes.
 
 ```mermaid
 flowchart TB

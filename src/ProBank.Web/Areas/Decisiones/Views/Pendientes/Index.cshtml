@@ -1,0 +1,50 @@
+@{ ViewData["Title"] = "Mis aprobaciones"; ViewData["Opcion"] = "pendientes"; }
+@section Scripts {
+<script src="~/js/decisiones.js" asp-append-version="true"></script>
+<script>
+  // DEC-03, DEC-05 y DEC-07: «Por firmar»: las decisiones que esperan la firma del usuario (en secuencia, cuando llega su turno);
+  // las aprueba, rechaza o modifica con su clave. «Firmadas por mí»: las que ya aprobó o rechazó (en cualquier versión), con su
+  // resultado, para consultarlas y exportar el PDF. «Notificadas a mí»: las que le notificaron (solo lectura; cada consulta queda
+  // en la trazabilidad).
+  pb.listo.then(() => {
+    const $c = $("#content");
+    let alcance = "pendientes", lista = null;
+    const listo = () => lista.recargar();
+    const VACIO = { pendientes: "No tiene decisiones pendientes de su firma.", firmadas: "Aún no ha aprobado ni rechazado decisiones.",
+                    notificadas: "No tiene decisiones notificadas." };
+    // Mi firma: la de la versión vigente o, si la decisión se modificó después, la de la versión que firmó
+    const miFirma = d => d.miResultado ? d.miResultado + (d.miVersionFirma !== d.version ? " (v" + d.miVersionFirma + ")" : "") : "—";
+
+    function pintar() {
+      $c.empty();
+      const firmar = alcance === "pendientes", firmadas = alcance === "firmadas";
+      lista = pb.ui.grid({
+        $c, modulo: "Decisiones", titulo: "Mis aprobaciones", opcion: "pendientes", clave: "token", exportar: firmadas,
+        vacio: VACIO[alcance],
+        cargar: () => pb.get(decisiones.url("Decisiones", "alcance=" + alcance)),
+        filtros: [{ location: "before", locateInMenu: "never", widget: "dxButtonGroup", options: {
+          items: [{ id: "pendientes", text: "Por firmar", icon: "edit" }, { id: "firmadas", text: "Firmadas por mí", icon: "check" },
+                  { id: "notificadas", text: "Notificadas a mí", icon: "message" }],
+          keyExpr: "id", selectedItemKeys: [alcance], stylingMode: "outlined", onItemClick: e => { if (e.itemData.id !== alcance) { alcance = e.itemData.id; pintar(); } } } }],
+        columnas: [
+          { campo: "codigo", titulo: "Decisión" }, { campo: "titulo", titulo: "Título", ancho: 280 }, { campo: "tipo", titulo: "Tipo" }, { campo: "area", titulo: "Área" },
+          { campo: "creadoPor", titulo: "Registrada por" }, { campo: "version", titulo: "Versión", valor: d => "v" + d.version }
+        ].concat(firmadas ? [
+          { campo: "miResultado", titulo: "Mi firma", valor: miFirma, pill: true }, { campo: "miFechaFirma", titulo: "Firmada el", formato: "fechaHora" }
+        ] : []).concat([
+          { campo: "aprobadas", titulo: "Aprobaciones", valor: decisiones.avance }, { campo: "estado", titulo: "Estado de la decisión", pill: true }
+        ]),
+        botones: firmar ? [
+          { text: "Aprobar", icon: "check", type: "default", accion: "aprobar", fila: true, onClick: d => decisiones.firmar(d, true, listo) },
+          { text: "Rechazar", icon: "close", accion: "aprobar", fila: true, onClick: d => decisiones.firmar(d, false, listo) },
+          { text: "Modificar", icon: "edit", accion: "aprobar", fila: true, onClick: d => decisiones.modificar(d, listo) }
+        ] : [],
+        expandir: true,
+        detalle: ($e, d) => decisiones.detalle($e, d, decisiones.accionesFirma(d, listo), listo)
+      });
+    }
+
+    pintar();
+  });
+</script>
+}

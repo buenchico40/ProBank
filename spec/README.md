@@ -24,4 +24,3 @@ Un cambio de regla entra primero aquí, luego en `trazabilidad.md`, luego en el 
 | [trazabilidad.md](trazabilidad.md) | Requisito → pantalla → datos → prueba |
 | [no-funcionales.md](no-funcionales.md) | Seguridad, auditoría, rendimiento |
 | [modelo-datos/](modelo-datos/) | Diagramas ER por esquema (Mermaid) |
-| [formatos/](formatos/) | Formato Excel de carga masiva de coactivas |

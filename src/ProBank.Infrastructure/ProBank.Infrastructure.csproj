@@ -13,6 +13,7 @@
     <PackageReference Include="Azure.Storage.Blobs" />
     <PackageReference Include="Microsoft.Graph" />
     <PackageReference Include="MailKit" />
+    <PackageReference Include="HtmlSanitizer" />
     <PackageReference Include="DevExpress.Reporting.Core" />
     <PackageReference Include="DevExpress.Drawing.Skia" />
   </ItemGroup>

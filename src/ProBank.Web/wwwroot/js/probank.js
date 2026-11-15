@@ -7,13 +7,13 @@
   // Menú del prototipo. "url" apunta a la pantalla real; las opciones aún no construidas abren su ficha de módulo.
   const MENU = [
     { id: "seg", title: "Seguridad", icon: "lock", items: [["usuarios", "Usuarios", "/Seguridad/Usuarios"], ["roles", "Roles y permisos", "/Seguridad/Roles"], ["params", "Parámetros de acceso", "/Seguridad/Parametros"], ["auditoria", "Auditoría", "/Seguridad/Auditoria"]] },
-    { id: "coa", title: "Coactivas", icon: "money", items: [["oficios", "Oficios", "/Coactivas/Oficios"], ["coactivas", "Coactivas", "/Coactivas/Coactivas"], ["clientes", "Coactivas por cliente", "/Coactivas/Clientes"]] },
     { id: "pry", title: "Portafolio", icon: "folder", items: [["proyectos", "Proyectos, mejoras y bugs", "/Portafolio/Proyectos"], ["gantt", "Cronograma (Gantt)", "/Portafolio/Cronograma"],
       ["tareas", "Mis tareas", "/Portafolio/Tareas"], ["aprobaciones", "Aprobaciones", "/Portafolio/Aprobaciones"], ["acuerdos", "Acuerdos semanales", "/Portafolio/Acuerdos"],
       ["informes", "Informes de seguimiento", "/Portafolio/Informes"], ["paramproy", "Parametrización", "/Portafolio/Parametrizacion"]] },
     { id: "com", title: "Presupuesto", icon: "cart", items: [["presupuesto", "Presupuesto por área", "/Presupuesto/Partidas"], ["movimientos", "Ajustes y movimientos", "/Presupuesto/Movimientos"], ["renovaciones", "Renovaciones de servicios", "/Presupuesto/Renovaciones"], ["solicitudes", "Solicitudes de compra", "/Presupuesto/Solicitudes"], ["pagos", "Pagos", "/Presupuesto/Pagos"], ["areaspres", "Áreas del presupuesto", "/Presupuesto/Areas"]] },
     { id: "cum", title: "Cumplimiento y auditoría", icon: "taskcomplete", items: [["controles", "Controles regulatorios"], ["auditorias", "Auditorías"], ["hallazgos", "Hallazgos y planes de acción"]] },
     { id: "cred", title: "Bóveda", icon: "key", items: [["grupos", "Grupos de acceso", "/Boveda/Grupos"], ["certificados", "Certificados digitales", "/Boveda/Certificados"], ["cuentas", "Cuentas técnicas", "/Boveda/Cuentas"], ["secretos", "Secretos", "/Boveda/Secretos"]] },
+    { id: "dec", title: "Decisiones", icon: "taskcomplete", items: [["decisiones", "Registro de decisiones", "/Decisiones/Registro"], ["pendientes", "Mis aprobaciones", "/Decisiones/Pendientes"], ["tiposdec", "Tipos de decisión", "/Decisiones/Tipos"]] },
     { id: "mkt", title: "Marketing", icon: "image", items: [["promos", "Imágenes promocionales", "/Marketing/Promociones"], ["comunicados", "Comunicados", "/Marketing/Comunicados"]] },
     { id: "sql", title: "Consultas dinámicas", icon: "datafield", items: [["consultas", "Catálogo de consultas", "/ConsultasDinamicas/Catalogo"], ["ejecuciones", "Ejecuciones y aprobaciones", "/ConsultasDinamicas/Ejecuciones"], ["audejec", "Auditoría de ejecuciones", "/ConsultasDinamicas/Auditoria"], ["conexiones", "Bases de datos", "/ConsultasDinamicas/Conexiones"]] },
     { id: "rep", title: "Reportes", icon: "chart", items: [["reportes", "Reportería por módulo"], ["catreportes", "Catálogo de reportes"]] },
@@ -34,7 +34,7 @@
   const aFecha = v => v instanceof Date ? v : typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(+v.slice(0, 4), +v.slice(5, 7) - 1, +v.slice(8, 10)) : new Date(v);
   const fecha = v => { if (!v) return "—"; const d = aFecha(v); return isNaN(d) ? String(v) : pad(d.getDate()) + "/" + pad(d.getMonth() + 1) + "/" + d.getFullYear(); };
   const fechaHora = v => { if (!v) return "—"; const d = aFecha(v); return isNaN(d) ? String(v) : fecha(v) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes()); };
-  // Montos siempre en moneda: $ 1.500,00 (COA-05)
+  // Montos siempre en moneda: $ 1.500,00
   const dinero = v => { if (v == null || v === "") return "—"; const n = Number(v), p = Math.abs(n).toFixed(2).split("."); return (n < 0 ? "-" : "") + "$ " + p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".") + "," + p[1]; };
   const hm = () => { const d = new Date(); return pad(d.getHours()) + ":" + pad(d.getMinutes()); };
   const isPhone = () => window.matchMedia("(max-width: 640px)").matches;
@@ -161,7 +161,7 @@
       calculateCellValue: d => valor(col, d), calculateSortValue: col.formato ? col.campo : undefined,
       cellTemplate: ($cell, info) => {
         const v = info.value == null || info.value === "" ? "—" : info.value;
-        // Primera columna: enlace que abre la ficha, o que despliega el detalle (expandir, como «Coactivas por cliente»)
+        // Primera columna: enlace que abre la ficha, o que despliega el detalle (expandir)
         if (i === 0 && (cfg.alAbrir || cfg.expandir)) {
           $('<button type="button" class="lnk">').text(v).on("click", ev => {
             ev.stopPropagation();

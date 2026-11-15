@@ -9,11 +9,6 @@ Cada requisito apunta a su módulo, a la tabla principal y a la prueba que lo cu
 | SEG-03 | Permisos por opción × acción y por función propia (mostrar contraseña, revocar sesiones). | Seguridad | seg.Usuario | `seguridad.spec.ts` @SEG-03 |
 | SEG-04 | Cambio de IP en la sesión revoca la sesión. | Seguridad | seg.Usuario | `seguridad.spec.ts` @SEG-04 |
 | SEG-05 | Auditoría general de toda acción, no editable ni eliminable. | Seguridad | seg.Usuario | `seguridad.spec.ts` @SEG-05 |
-| COA-01 | Cada coactiva se ejecuta por orden judicial: bloqueo, levantamiento o transferencia. | Coactivas | coa.Oficio | `coactivas.spec.ts` @COA-01 |
-| COA-02 | Un oficio trae varias coactivas de varios clientes y entidades, con órdenes distintas mezcladas. | Coactivas | coa.Oficio | `coactivas.spec.ts` @COA-02 |
-| COA-03 | Se eligen los tipos de producto que se pueden bloquear (ahorros, corriente, plazo fijo, inversión). | Coactivas | coa.Oficio | `coactivas.spec.ts` @COA-03 |
-| COA-04 | Carga masiva desde el formato Excel de `spec/formatos/`. | Coactivas | coa.Oficio | `coactivas.spec.ts` @COA-04 |
-| COA-05 | Cobertura calculada: Sin bloqueo, Parcial o Total; montos siempre en moneda ($ 856,00). | Coactivas | coa.Oficio | `coactivas.spec.ts` @COA-05 |
 | PRY-01 | Gerencia de TI es el líder de proyecto. | Portafolio | pry.Item | `portafolio.spec.ts` @PRY-01 |
 | PRY-02 | Cada ítem tiene uno o varios responsables. | Portafolio | pry.Item | `portafolio.spec.ts` @PRY-02 |
 | PRY-03 | Desde el detalle del ítem se crea una tarea y se asigna a un técnico de cualquier área. | Portafolio | pry.Item | `portafolio.spec.ts` @PRY-03 |
@@ -32,6 +27,14 @@ Cada requisito apunta a su módulo, a la tabla principal y a la prueba que lo cu
 | CRE-01 | Certificados, cuentas técnicas y secretos con vencimiento y rotación. | Bóveda | cred.Certificado, cred.CuentaTecnica, cred.Secreto, cred.CredencialVersion | `boveda.spec.ts` @CRE-01 |
 | CRE-02 | Mostrar o copiar un valor es un permiso propio, solo para el grupo de acceso, y queda auditado. | Bóveda | cred.GrupoAcceso, cred.GrupoMiembro, cred.CredencialAcceso | `boveda.spec.ts` @CRE-02 |
 | CRE-03 | Valores cifrados con Always Encrypted; CMK en Key Vault. | Bóveda | cred.CredencialVersion (Always Encrypted) | `boveda.spec.ts` @CRE-03 |
+| DEC-01 | Cada decisión se registra con tipo, título, descripción (alcance y montos), área y fecha; enviada, su contenido queda sellado. | Decisiones | dec.Decision | `decisiones.spec.ts` @DEC-01 |
+| DEC-02 | El tipo define aprobadores y su orden (en secuencia o todos a la vez). | Decisiones | dec.TipoDecision, dec.TipoAprobador | `decisiones.spec.ts` @DEC-02 |
+| DEC-03 | Firma electrónica con la clave del aprobador y sello SHA-256 verificable. | Decisiones | dec.DecisionAprobador | `decisiones.spec.ts` @DEC-03 |
+| DEC-04 | PDF con detalle, firmas y trazabilidad, firmado con el certificado del banco. | Decisiones | dec.Decision | `decisiones.spec.ts` @DEC-04 |
+| DEC-05 | Notificados que ven la decisión; se agregan después, se quitan solo en borrador. | Decisiones | dec.DecisionNotificado | `decisiones.spec.ts` @DEC-05 |
+| DEC-06 | Trazabilidad de cada decisión, incluidas consultas y exportaciones. | Decisiones | dec.DecisionEvento | `decisiones.spec.ts` @DEC-06 |
+| DEC-07 | Un aprobador modifica: versión nueva y todos vuelven a firmar; los aprobadores solo se agregan tras la primera firma. | Decisiones | dec.DecisionVersion, dec.FirmaAnterior | `decisiones.spec.ts` @DEC-07 |
+| DEC-08 | Archivos de respaldo fijos desde el envío; el PDF muestra sus nombres. | Decisiones | dec.DecisionAdjunto | `decisiones.spec.ts` @DEC-08 |
 | MKT-01 | Promociones con vigencia, audiencia por rol y orden. | Marketing | mkt.Promocion | `marketing.spec.ts` @MKT-01 |
 | MKT-02 | Comunicados estructurados (resumen, secciones, contacto) con tipo, vigencia y destacado. | Marketing | mkt.Comunicado | `marketing.spec.ts` @MKT-02 |
 | SQL-01 | Solo procedimientos almacenados; no se aceptan queries libres. | Consultas dinámicas | rpt.Consulta, rpt.Parametro | `consultas.spec.ts` @SQL-01 |

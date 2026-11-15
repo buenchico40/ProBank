@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Globalization;
+using System.Security.Cryptography.X509Certificates;
 using DevExpress.Drawing;
 using DevExpress.Drawing.Printing;
 using DevExpress.Utils;
@@ -53,7 +54,8 @@ internal static class EstiloReporte
         return r;
     }
 
-    public static byte[] Pdf(XtraReport reporte, string titulo)
+    /// <param name="firma">Certificado con el que se firma el PDF (Decisiones) y el motivo que se muestra en la firma.</param>
+    public static byte[] Pdf(XtraReport reporte, string titulo, (X509Certificate2 Certificado, string Motivo)? firma = null)
     {
         // Los ejes de los gráficos formatean con la cultura del hilo: en español ($ 20.000, no $ 20,000)
         var cultura = CultureInfo.CurrentCulture;
@@ -61,7 +63,15 @@ internal static class EstiloReporte
         try
         {
             using var ms = new MemoryStream();
-            reporte.ExportToPdf(ms, new PdfExportOptions { DocumentOptions = { Title = titulo, Author = "ProBank" } });
+            var opciones = new PdfExportOptions { DocumentOptions = { Title = titulo, Author = "ProBank" } };
+            if (firma is { } f)
+            {
+                opciones.SignatureOptions.Certificate = f.Certificado;
+                opciones.SignatureOptions.Reason = f.Motivo;
+                opciones.SignatureOptions.Location = "ProBank";
+                opciones.SignatureOptions.ContactInfo = "Seguridad de la información";
+            }
+            reporte.ExportToPdf(ms, opciones);
             return ms.ToArray();
         }
         finally { CultureInfo.CurrentCulture = cultura; }

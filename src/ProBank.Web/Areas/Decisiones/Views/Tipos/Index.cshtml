@@ -1,0 +1,87 @@
+@{ ViewData["Title"] = "Tipos de decisión"; ViewData["Opcion"] = "tiposdec"; }
+@section Scripts {
+<script src="~/js/decisiones.js" asp-append-version="true"></script>
+<script>
+  // DEC-02: tipos de decisión con su flujo: aprobadores y su orden;
+  // en secuencia (por orden) o todos a la vez. Los cambios rigen para las decisiones que se envíen después.
+  pb.listo.then(() => {
+    const $c = $("#content"), url = decisiones.url;
+    let lista = null, usuarios = null;
+    const cargarUsuarios = async () => usuarios || (usuarios = (await pb.get(url("Usuarios"))) || []);
+    const resumen = t => t.listaAprobadores.map(a => a.orden + ". " + a.nombre).join(" · ");
+
+    function listado() {
+      $c.empty();
+      lista = pb.ui.grid({
+        $c, modulo: "Decisiones", titulo: "Tipos de decisión", opcion: "tiposdec", clave: "codigo",
+        cargar: () => pb.get(url("Tipos", "soloActivos=false")),
+        columnas: [
+          { campo: "codigo", titulo: "Tipo" }, { campo: "nombre", titulo: "Nombre" }, { campo: "secuencial", titulo: "Flujo", valor: t => t.secuencial ? "En secuencia" : "Todos a la vez" },
+          { campo: "aprobadores", titulo: "Aprobadores", valor: resumen, ancho: 380 }, { campo: "decisiones", titulo: "Decisiones" },
+          { campo: "activo", titulo: "Estado", valor: t => t.activo ? "Activo" : "Inactivo", pill: true }
+        ],
+        anulada: t => !t.activo,
+        botones: [
+          { text: "Nuevo", icon: "add", type: "default", accion: "crear", onClick: () => ficha(null, "nuevo") },
+          { text: "Editar", icon: "edit", accion: "editar", fila: true, onClick: t => ficha(t, "edicion") }
+        ],
+        alAbrir: t => ficha(t, "consulta"),
+        detalle: ($e, t) => {
+          pb.ui.mdHead($e, [t.codigo, t.nombre, t.secuencial ? "En secuencia" : "Todos a la vez", t.descripcion || ""].filter(Boolean), t.activo ? "Activo" : "Inactivo");
+          pb.ui.mdGrid($e, "Aprobadores", [["o", "Orden"], ["u", "Aprobador"]],
+            t.listaAprobadores.map(a => ({ o: a.orden, u: a.nombre + " (" + a.usuario + ")" + (a.estado !== "Activo" ? " · " + a.estado.toLowerCase() : "") })));
+          pb.ui.mdNote($e, t.secuencial ? "Firman en orden: cada aprobador recibe la decisión cuando firma el anterior." : "Todos reciben la decisión a la vez; queda aprobada cuando firman todos.");
+        }
+      });
+    }
+
+    async function ficha(t, modo) {
+      const us = await cargarUsuarios();
+      const datos = t ? { codigo: t.codigo, nombre: t.nombre, descripcion: t.descripcion || "", secuencial: t.secuencial, activo: t.activo }
+                      : { codigo: "(se asigna al guardar)", nombre: "", descripcion: "", secuencial: true, activo: true };
+      const filas = t ? t.listaAprobadores.map(a => ({ usuarioId: a.usuarioId, orden: a.orden })) : [];
+      let grilla = null;
+      pb.ui.detalle({
+        $c, modulo: "Decisiones", titulo: "Tipos de decisión", modo, nombre: t && t.codigo + " · " + t.nombre, datos,
+        soloLectura: modo === "consulta" && !pb.can("tiposdec", "editar"),
+        items: ro => [
+          { dataField: "codigo", label: { text: "Tipo (calculado)" }, editorOptions: { readOnly: true } },
+          { dataField: "nombre", label: { text: "Nombre" }, isRequired: !ro, editorOptions: { maxLength: 100, placeholder: "Por ejemplo: Compra mayor" } },
+          { dataField: "secuencial", label: { text: "Firman en secuencia (por orden)" }, editorType: "dxSwitch", editorOptions: { switchedOnText: "Sí", switchedOffText: "No" } },
+          { dataField: "descripcion", label: { text: "Descripción" }, colSpan: 2, editorOptions: { maxLength: 300 } },
+          { dataField: "activo", label: { text: "Activo" }, editorType: "dxSwitch", editorOptions: { switchedOnText: "Sí", switchedOffText: "No" } }
+        ],
+        extra: ($x, ro) => {
+          const $a = $('<div class="card pad stack">').appendTo($x);
+          $a.append("<h2>Aprobadores</h2>").append($('<p class="muted" style="margin:0">').text(
+            "Orden: turno cuando firman en secuencia. " +
+            "Quien registra una decisión nunca la aprueba: si es aprobador del tipo, se lo omite."));
+          grilla = $("<div>").appendTo($a).dxDataGrid({
+            dataSource: filas, keyExpr: "usuarioId", showBorders: true, showRowLines: true, noDataText: "Agregue los aprobadores.",
+            editing: { mode: "cell", allowUpdating: !ro, allowAdding: !ro, allowDeleting: !ro, confirmDelete: false, newRowPosition: "last", texts: { addRow: "Agregar aprobador" } },
+            onInitNewRow: e => { e.data.orden = (filas.length ? Math.max(...filas.map(f => f.orden || 0)) : 0) + 1; },
+            columns: [
+              { dataField: "usuarioId", caption: "Aprobador", validationRules: [{ type: "required" }],
+                lookup: { dataSource: us.map(u => ({ id: u.usuarioId, t: u.nombre + " (" + u.usuario + ")" })), valueExpr: "id", displayExpr: "t" } },
+              { dataField: "orden", caption: "Orden", dataType: "number", width: 110, validationRules: [{ type: "range", min: 1, max: 99 }] },
+            ]
+          }).dxDataGrid("instance");
+        },
+        alGuardar: async f => {
+          await grilla.saveEditData();
+          const aprobadores = filas.filter(a => a.usuarioId).map(a => ({ usuarioId: a.usuarioId, orden: a.orden || 1 }));
+          if (!aprobadores.length) return pb.notify("Agregue al menos un aprobador", "warning");
+          const r = await pb.post(url("GuardarTipo", t ? "codigo=" + encodeURIComponent(t.codigo) : ""),
+            { nombre: f.nombre, descripcion: f.descripcion || null, secuencial: !!f.secuencial, activo: !!f.activo, aprobadores });
+          if (r === undefined) return;
+          pb.notify(r); listado();
+        },
+        alEditar: () => ficha(t, "edicion"),
+        alVolver: listado
+      });
+    }
+
+    listado();
+  });
+</script>
+}

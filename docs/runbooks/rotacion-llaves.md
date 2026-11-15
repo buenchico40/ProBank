@@ -19,6 +19,13 @@
   `Set-SqlColumnEncryption`) en una ventana de mantenimiento; vuelve a cifrar la columna completa.
 - **Si se pierde la CMK, se pierden los valores:** Key Vault tiene borrado temporal y protección de purga (`purge_protection`, apagada solo en dev); no borre ni desactive la llave.
 
+## Certificado de firma de documentos (Decisiones)
+
+- La API firma los PDF de Decisiones con el certificado `firma-documentos` de Key Vault (lo lee como secreto PKCS#12). Terraform lo
+  crea autofirmado y con renovación automática; para validez ante terceros, importe con ese nombre (Certificados › Importar) el
+  certificado de firma emitido por una entidad acreditada, con clave exportable. La API toma la versión nueva en 5 minutos.
+- Los PDF ya emitidos conservan la firma del certificado con que se generaron; se pueden volver a exportar cuando se necesite.
+
 ## Otros secretos
 
 - Cadenas de conexión de Consultas dinámicas: actualizar el secreto en Key Vault; ProBank toma la versión nueva al vencer la caché (5 minutos).
